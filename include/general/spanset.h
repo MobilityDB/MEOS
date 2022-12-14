@@ -28,23 +28,23 @@
  *****************************************************************************/
 
 /**
- * @brief Operators for time types.
+ * @brief Basic functions for set of disjoint spans.
  */
 
-#ifndef __TIME_OPS_H__
-#define __TIME_OPS_H__
+#ifndef __SPANSET_H__
+#define __SPANSET_H__
 
 /* PostgreSQL */
 #include <postgres.h>
 /* MobilityDB */
-#include "general/temporal_catalog.h"
 #include "general/timetypes.h"
 
 /*****************************************************************************/
 
-/* Miscellaneous */
+/* General functions */
 
-extern uint32_t time_max_header_size(void);
+extern void spanset_span_slice(Datum psdatum, Period *p);
+extern bool spanset_find_value(const SpanSet *ss, Datum v, int *loc);
 
 /*****************************************************************************/
 

@@ -28,24 +28,22 @@
  *****************************************************************************/
 
 /**
- * @brief Basic functions for set of disjoint periods.
+ * @brief Operators for set types.
  */
 
-#ifndef __PERIODSET_H__
-#define __PERIODSET_H__
+#ifndef __SET_OPS_H__
+#define __SET_OPS_H__
 
 /* PostgreSQL */
 #include <postgres.h>
 /* MobilityDB */
+#include "general/temporal_catalog.h"
 #include "general/timetypes.h"
 
 /*****************************************************************************/
 
-/* General functions */
+/* Miscellaneous */
 
-extern void periodset_period_slice(Datum psdatum, Period *p);
-extern bool periodset_find_timestamp(const PeriodSet *ps, TimestampTz t,
-  int *loc);
 
 /*****************************************************************************/
 

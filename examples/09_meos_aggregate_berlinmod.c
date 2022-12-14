@@ -92,7 +92,7 @@ int main(void)
 
   /* Variable keeping the current aggregate state */
   SkipList *state = NULL;
-  STBOX *extent = NULL;
+  STBox *extent = NULL;
   Interval *interval = pg_interval_in("1 hour", -1);
   TimestampTz origin = pg_timestamptz_in("2020-06-01", -1);
 
@@ -129,8 +129,8 @@ int main(void)
     }
 
     /* Add the current value to the running aggregates */
-    extent = tpoint_extent_transfn(extent, trip);
-    state = temporal_tcount_transfn(state, trip, interval, origin);
+    extent = tpoint_extent_transfn(extent, trip_rec.trip);
+    state = temporal_tcount_transfn(state, trip_rec.trip, interval, origin);
     /* Free memory */
     free(trip_rec.trip);
 
@@ -151,7 +151,6 @@ int main(void)
     printf("\%s\n", tint_out(tcount_seqs[i]));
 
   /* Free memory */
-  free(trip_rec.trip);
   skiplist_free(state);
   free(tcount_seqs);
 
@@ -159,7 +158,7 @@ int main(void)
   fclose(file);
 
   /* Finalize MEOS */
-  meos_finish();
+  meos_finalize();
 
   return 0;
 }
