@@ -31,8 +31,8 @@
  * @brief Miscellaneous utility functions for temporal types.
  */
 
-#ifndef __TEMPORAL_UTIL_H__
-#define __TEMPORAL_UTIL_H__
+#ifndef __TYPE_UTIL_H__
+#define __TYPE_UTIL_H__
 
 /* PostgreSQL */
 #include <postgres.h>
@@ -47,6 +47,7 @@
 extern size_t double_pad(size_t size);
 extern Datum datum_copy(Datum value, meosType typid);
 extern double datum_double(Datum d, meosType basetype);
+extern Datum double_datum(double d, meosType basetype);
 extern bytea *bstring2bytea(const uint8_t *wkb, size_t size);
 
 /* Input/output functions */
@@ -59,7 +60,7 @@ extern char *basetype_out(Datum value, meosType type, int maxdd);
 extern void pfree_array(void **array, int count);
 extern void pfree_datumarr(Datum *array, int count);
 extern char *stringarr_to_string(char **strings, int count, int outlen,
-  char *prefix, char open, char close);
+  char *prefix, char open, char close, bool quotes, bool spaces);
 
 /* Sort functions */
 
@@ -121,4 +122,4 @@ extern double hypot3d(double x, double y, double z);
 
 /*****************************************************************************/
 
-#endif
+#endif /* __TYPE_UTIL_H__ */

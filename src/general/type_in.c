@@ -36,14 +36,14 @@
 #include <float.h>
 /* PostgreSQL */
 #include <postgres.h>
-/* MobilityDB */
+/* MEOS */
 #include <meos.h>
 #include <meos_internal.h>
 #include "general/pg_types.h"
 #include "general/set.h"
 #include "general/tbox.h"
-#include "general/temporal_util.h"
-#include "general/temporal_parser.h"
+#include "general/type_parser.h"
+#include "general/type_util.h"
 #include "point/stbox.h"
 #include "point/tpoint_spatialfuncs.h"
 #if NPOINT
@@ -66,6 +66,7 @@ typedef struct
   uint8_t temptype;       /**< Current temporal type we are handling */
   uint8_t subtype;        /**< Current temporal subtype we are handling */
   int32_t srid;           /**< Current SRID we are handling */
+  bool ordered;           /**< Is the set ordered? */
   bool hasx;              /**< X? */
   bool hasz;              /**< Z? */
   bool hast;              /**< T? */
@@ -1042,6 +1043,50 @@ npoint_from_wkb_state(wkb_parse_state *s)
 /*****************************************************************************/
 
 /**
+ * @brief Return a base value from its WKB representation.
+ */
+static Datum
+basevalue_from_wkb_state(wkb_parse_state *s)
+{
+  Datum result;
+  switch (s->basetype)
+  {
+    case T_BOOL:
+      result = BoolGetDatum(byte_from_wkb_state(s));
+      break;
+    case T_INT4:
+      result = Int32GetDatum(int32_from_wkb_state(s));
+      break;
+    case T_INT8:
+      result = Int64GetDatum(int64_from_wkb_state(s));
+      break;
+    case T_FLOAT8:
+      result = Float8GetDatum(double_from_wkb_state(s));
+      break;
+    case T_TIMESTAMPTZ:
+      result = TimestampTzGetDatum(timestamp_from_wkb_state(s));
+      break;
+    case T_TEXT:
+      result = PointerGetDatum(text_from_wkb_state(s));
+      break;
+    case T_GEOMETRY:
+    case T_GEOGRAPHY:
+      /* Notice that only point geometries/geographies are allowed */
+      result = point_from_wkb_state(s);
+      break;
+#if NPOINT
+    case T_NPOINT:
+      result = PointerGetDatum(npoint_from_wkb_state(s));
+      break;
+#endif /* NPOINT */
+    default: /* Error! */
+      elog(ERROR, "Unknown base type: %d", s->basetype);
+      break;
+  }
+  return result;
+}
+
+/**
  * Return the size of a span base value from its WKB representation.
  */
 static size_t
@@ -1062,35 +1107,6 @@ span_basevalue_from_wkb_size(wkb_parse_state *s)
       break;
     case T_TIMESTAMPTZ:
       result = sizeof(TimestampTz);
-      break;
-  }
-  return result;
-}
-
-/**
- * Return a value from its WKB representation.
- */
-static Datum
-span_basevalue_from_wkb_state(wkb_parse_state *s)
-{
-  Datum result;
-  ensure_span_type(s->spantype);
-  switch (s->spantype)
-  {
-    case T_INTSPAN:
-      result = Int32GetDatum(int32_from_wkb_state(s));
-      break;
-    case T_BIGINTSPAN:
-      result = Int64GetDatum(int64_from_wkb_state(s));
-      break;
-    case T_FLOATSPAN:
-      result = Float8GetDatum(double_from_wkb_state(s));
-      break;
-    case T_TSTZSPAN:
-      result = TimestampTzGetDatum(timestamp_from_wkb_state(s));
-      break;
-    default: /* Error! */
-      elog(ERROR, "Unknown span type: %d", s->spantype);
       break;
   }
   return result;
@@ -1130,8 +1146,8 @@ span_from_wkb_state1(wkb_parse_state *s)
   wkb_parse_state_check(s, size);
 
   /* Read the values and create the span */
-  Datum lower = span_basevalue_from_wkb_state(s);
-  Datum upper = span_basevalue_from_wkb_state(s);
+  Datum lower = basevalue_from_wkb_state(s);
+  Datum upper = basevalue_from_wkb_state(s);
   Span *result = span_make(lower, upper, lower_inc, upper_inc, s->basetype);
   return result;
 }
@@ -1178,35 +1194,27 @@ spanset_from_wkb_state(wkb_parse_state *s)
 /*****************************************************************************/
 
 /**
- * Return a value from its WKB representation.
+ * Parse the WKB flags.
  */
-static Datum
-set_basevalue_from_wkb_state(wkb_parse_state *s)
+void
+set_flags_from_wkb_state(wkb_parse_state *s, uint8_t wkb_flags)
 {
-  Datum result;
-  ensure_set_type(s->type);
-  switch (s->type)
+  s->hasz = false;
+  s->geodetic = false;
+  s->has_srid = false;
+  if (wkb_flags & MOBDB_WKB_ORDERED)
+    s->ordered = true;
+  /* Get the flags */
+  if (geo_basetype(s->basetype))
   {
-    case T_INTSET:
-      result = Int32GetDatum(int32_from_wkb_state(s));
-      break;
-    case T_BIGINTSET:
-      result = Int64GetDatum(int64_from_wkb_state(s));
-      break;
-    case T_FLOATSET:
-      result = Float8GetDatum(double_from_wkb_state(s));
-      break;
-    case T_TEXTSET:
-      result = PointerGetDatum(text_from_wkb_state(s));
-      break;
-    case T_TSTZSET:
-      result = TimestampTzGetDatum(timestamp_from_wkb_state(s));
-      break;
-    default: /* Error! */
-      elog(ERROR, "Unknown set type: %d", s->type);
-      break;
+    if (wkb_flags & MOBDB_WKB_ZFLAG)
+      s->hasz = true;
+    if (wkb_flags & MOBDB_WKB_GEODETICFLAG)
+      s->geodetic = true;
+    if (wkb_flags & MOBDB_WKB_SRIDFLAG)
+      s->has_srid = true;
   }
-  return result;
+  return;
 }
 
 /**
@@ -1218,15 +1226,24 @@ set_from_wkb_state(wkb_parse_state *s)
   /* Read the set type */
   uint16_t wkb_settype = (uint16_t) int16_from_wkb_state(s);
   /* For template classes it is necessary to store the specific type */
-  s->type = wkb_settype;;
+  s->type = wkb_settype;
   s->basetype = settype_basetype(s->type);
+  /* Read the set flags */
+  uint8_t wkb_flags = (uint8_t) byte_from_wkb_state(s);
+  set_flags_from_wkb_state(s, wkb_flags);
+  /* Read the SRID, if necessary */
+  if (s->has_srid)
+    s->srid = int32_from_wkb_state(s);
+  else if (wkb_flags & MOBDB_WKB_GEODETICFLAG)
+    s->srid = SRID_DEFAULT;
+
   /* Read the number of values and allocate space for them */
   int count = int32_from_wkb_state(s);
   Datum *values = palloc(sizeof(Datum) * count);
 
   /* Read and create the set */
   for (int i = 0; i < count; i++)
-    values[i] = set_basevalue_from_wkb_state(s);
+    values[i] = basevalue_from_wkb_state(s);
   Set *result = set_make_free(values, count, s->basetype, ORDERED);
   return result;
 }
@@ -1388,49 +1405,6 @@ temporal_flags_from_wkb_state(wkb_parse_state *s, uint8_t wkb_flags)
 }
 
 /**
- * Return a value from its WKB representation.
- */
-static Datum
-temporal_basevalue_from_wkb_state(wkb_parse_state *s)
-{
-  Datum result;
-  ensure_temporal_basetype(s->basetype);
-  switch (s->temptype)
-  {
-    case T_TBOOL:
-      result = BoolGetDatum(byte_from_wkb_state(s));
-      break;
-    case T_TINT:
-      result = Int32GetDatum(int32_from_wkb_state(s));
-      break;
-#if 0 /* not used */
-    case T_TINT8:
-      result = Int64GetDatum(int64_from_wkb_state(s));
-      break;
-#endif /* not used */
-    case T_TFLOAT:
-      result = Float8GetDatum(double_from_wkb_state(s));
-      break;
-    case T_TTEXT:
-      result = PointerGetDatum(text_from_wkb_state(s));
-      break;
-    case T_TGEOMPOINT:
-    case T_TGEOGPOINT:
-      result = point_from_wkb_state(s);
-      break;
-#if NPOINT
-    case T_TNPOINT:
-      result = PointerGetDatum(npoint_from_wkb_state(s));
-      break;
-#endif /* NPOINT */
-    default: /* Error! */
-      elog(ERROR, "Unknown temporal type: %d", s->temptype);
-      break;
-  }
-  return result;
-}
-
-/**
  * @brief Return a temporal instant point from its WKB representation.
  *
  * It reads the base type value and the timestamp and advances the parse state
@@ -1442,7 +1416,7 @@ static TInstant *
 tinstant_from_wkb_state(wkb_parse_state *s)
 {
   /* Read the values from the buffer and create the instant */
-  Datum value = temporal_basevalue_from_wkb_state(s);
+  Datum value = basevalue_from_wkb_state(s);
   TimestampTz t = timestamp_from_wkb_state(s);
   TInstant *result = tinstant_make(value, s->temptype, t);
   if (! basetype_byvalue(s->basetype))
@@ -1460,7 +1434,7 @@ tinstarr_from_wkb_state(wkb_parse_state *s, int count)
   for (int i = 0; i < count; i++)
   {
     /* Parse the point and the timestamp to create the instant point */
-    Datum value = temporal_basevalue_from_wkb_state(s);
+    Datum value = basevalue_from_wkb_state(s);
     TimestampTz t = timestamp_from_wkb_state(s);
     result[i] = tinstant_make(value, s->temptype, t);
     if (! basetype_byvalue(s->basetype))
@@ -1512,7 +1486,7 @@ tsequenceset_from_wkb_state(wkb_parse_state *s)
     for (int j = 0; j < countinst; j++)
     {
       /* Parse the value and the timestamp to create the temporal instant */
-      Datum value = temporal_basevalue_from_wkb_state(s);
+      Datum value = basevalue_from_wkb_state(s);
       TimestampTz t = timestamp_from_wkb_state(s);
       instants[j] = tinstant_make(value, s->temptype, t);
       if (! basetype_byvalue(s->basetype))

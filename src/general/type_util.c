@@ -31,7 +31,7 @@
  * @brief General utility functions for temporal types.
  */
 
-#include "general/temporal_util.h"
+#include "general/type_util.h"
 
 /* C */
 #include <assert.h>
@@ -39,13 +39,13 @@
 #include <postgres.h>
 #include <utils/float.h>
 #include <utils/timestamp.h>
-/* MobilityDB */
+/* MEOS */
 #include <meos.h>
 #include <meos_internal.h>
 #include "general/temporal.h"
 #include "general/pg_types.h"
 #include "general/doublen.h"
-#include "general/temporal_parser.h"
+#include "general/type_parser.h"
 #include "point/pgis_call.h"
 #include "point/tpoint_spatialfuncs.h"
 #if NPOINT
@@ -63,7 +63,7 @@ extern int varstr_cmp(const char *arg1, int len1, const char *arg2, int len2, Oi
 /* Version of the functions where the types of both arguments is equal */
 
 /**
- * Return true if the first value is less than the second one
+ * @brief Return true if the first value is less than the second one
  */
 int
 datum_cmp(Datum l, Datum r, meosType type)
@@ -72,7 +72,7 @@ datum_cmp(Datum l, Datum r, meosType type)
 }
 
 /**
- * Return true if the values are equal
+ * @brief Return true if the values are equal
  */
 bool
 datum_eq(Datum l, Datum r, meosType type)
@@ -81,7 +81,7 @@ datum_eq(Datum l, Datum r, meosType type)
 }
 
 /**
- * Return true if the values are different
+ * @brief Return true if the values are different
  */
 bool
 datum_ne(Datum l, Datum r, meosType type)
@@ -90,7 +90,7 @@ datum_ne(Datum l, Datum r, meosType type)
 }
 
 /**
- * Return true if the first value is less than the second one
+ * @brief Return true if the first value is less than the second one
  */
 bool
 datum_lt(Datum l, Datum r, meosType type)
@@ -99,7 +99,7 @@ datum_lt(Datum l, Datum r, meosType type)
 }
 
 /**
- * Return true if the first value is less than or equal to the second one
+ * @brief Return true if the first value is less than or equal to the second one
  */
 bool
 datum_le(Datum l, Datum r, meosType type)
@@ -108,7 +108,7 @@ datum_le(Datum l, Datum r, meosType type)
 }
 
 /**
- * Return true if the first value is greater than the second one
+ * @brief Return true if the first value is greater than the second one
  */
 bool
 datum_gt(Datum l, Datum r, meosType type)
@@ -117,7 +117,7 @@ datum_gt(Datum l, Datum r, meosType type)
 }
 
 /**
- * Return true if the first value is greater than or equal to the second one
+ * @brief Return true if the first value is greater than or equal to the second one
  */
 bool
 datum_ge(Datum l, Datum r, meosType type)
@@ -133,17 +133,20 @@ datum_ge(Datum l, Datum r, meosType type)
  */
 
 /**
- * Return true if the first value is less than the second one
+ * @brief Return true if the first value is less than the second one
  */
 int
 datum_cmp2(Datum l, Datum r, meosType typel, meosType typer)
 {
-  ensure_set_basetype(typel);
+  ensure_basetype(typel);
   if (typel != typer)
-    ensure_set_basetype(typer);
+    ensure_basetype(typer);
   if (typel == T_TIMESTAMPTZ && typer == T_TIMESTAMPTZ)
     return timestamptz_cmp_internal(DatumGetTimestampTz(l),
       DatumGetTimestampTz(r));
+  if (typel == T_BOOL && typer == T_BOOL)
+    return (DatumGetBool(l) < DatumGetBool(r)) ? -1 :
+      ((DatumGetBool(l) > DatumGetBool(r)) ? 1 : 0);
   if (typel == T_INT4 && typer == T_INT4)
     return (DatumGetInt32(l) < DatumGetInt32(r)) ? -1 :
       ((DatumGetInt32(l) > DatumGetInt32(r)) ? 1 : 0);
@@ -158,41 +161,54 @@ datum_cmp2(Datum l, Datum r, meosType typel, meosType typer)
     return float8_cmp_internal(DatumGetFloat8(l), (double) DatumGetInt32(r));
   if (typel == T_TEXT && typer == T_TEXT)
     return text_cmp(DatumGetTextP(l), DatumGetTextP(r), DEFAULT_COLLATION_OID);
+  if (typel == T_DOUBLE2 && typel == typer)
+    return double2_cmp(DatumGetDouble2P(l), DatumGetDouble2P(r));
+  if (typel == T_DOUBLE3 && typel == typer)
+    return double3_cmp(DatumGetDouble3P(l), DatumGetDouble3P(r));
+  if (typel == T_DOUBLE4 && typel == typer)
+    return double4_cmp(DatumGetDouble4P(l), DatumGetDouble4P(r));
+  if ((typel == T_GEOMETRY || typel == T_GEOGRAPHY) && typel == typer)
+    return gserialized_cmp(DatumGetGserializedP(l), DatumGetGserializedP(r));
+#if NPOINT
+  if (typel == T_NPOINT && typel == typer)
+    return npoint_eq(DatumGetNpointP(l), DatumGetNpointP(r));
+#endif
   elog(ERROR, "unknown compare function for base type: %d", typel);
 }
 
 /**
- * Return true if the values are equal even if their type is not the same
+ * @brief Return true if the values are equal even if their type is not the same
+ * @note This function should be faster than the function datum_cmp2
  */
 bool
 datum_eq2(Datum l, Datum r, meosType typel, meosType typer)
 {
-  ensure_temporal_basetype(typel);
+  ensure_basetype(typel);
   if (typel != typer)
-    ensure_temporal_basetype(typer);
+    ensure_basetype(typer);
   if ((typel == T_TIMESTAMPTZ && typer == T_TIMESTAMPTZ) ||
     (typel == T_BOOL && typer == T_BOOL) ||
     (typel == T_INT4 && typer == T_INT4) ||
     (typel == T_INT8 && typer == T_INT8))
     return l == r;
   if (typel == T_FLOAT8 && typer == T_FLOAT8)
-    return MOBDB_FP_EQ(DatumGetFloat8(l), DatumGetFloat8(r));
+    return float8_eq(DatumGetFloat8(l), DatumGetFloat8(r));
   if (typel == T_INT4 && typer == T_FLOAT8)
-    return MOBDB_FP_EQ((double) DatumGetInt32(l), DatumGetFloat8(r));
+    return float8_eq((double) DatumGetInt32(l), DatumGetFloat8(r));
   if (typel == T_FLOAT8 && typer == T_INT4)
-    return MOBDB_FP_EQ(DatumGetFloat8(l), (double) DatumGetInt32(r));
+    return float8_eq(DatumGetFloat8(l), (double) DatumGetInt32(r));
   if (typel == T_TEXT && typer == T_TEXT)
-    return text_cmp(DatumGetTextP(l), DatumGetTextP(r), DEFAULT_COLLATION_OID) == 0;
+    return text_cmp(DatumGetTextP(l), DatumGetTextP(r),
+      DEFAULT_COLLATION_OID) == 0;
   if (typel == T_DOUBLE2 && typel == typer)
     return double2_eq(DatumGetDouble2P(l), DatumGetDouble2P(r));
   if (typel == T_DOUBLE3 && typel == typer)
     return double3_eq(DatumGetDouble3P(l), DatumGetDouble3P(r));
   if (typel == T_DOUBLE4 && typel == typer)
     return double4_eq(DatumGetDouble4P(l), DatumGetDouble4P(r));
-  if (typel == T_GEOMETRY && typel == typer)
-    return datum_point_eq(l, r);
-  if (typel == T_GEOGRAPHY && typel == typer)
-    return datum_point_eq(l, r);
+  if ((typel == T_GEOMETRY || typel == T_GEOGRAPHY) && typel == typer)
+    return (gserialized_cmp(DatumGetGserializedP(l),
+      DatumGetGserializedP(r)) == 0);
 #if NPOINT
   if (typel == T_NPOINT && typel == typer)
     return npoint_eq(DatumGetNpointP(l), DatumGetNpointP(r));
@@ -201,7 +217,7 @@ datum_eq2(Datum l, Datum r, meosType typel, meosType typer)
 }
 
 /**
- * Return true if the values are different
+ * @brief Return true if the values are different
  */
 bool
 datum_ne2(Datum l, Datum r, meosType typel, meosType typer)
@@ -210,76 +226,46 @@ datum_ne2(Datum l, Datum r, meosType typel, meosType typer)
 }
 
 /**
- * Return true if the first value is less than the second one
+ * @brief Return true if the first value is less than the second one
  */
 bool
 datum_lt2(Datum l, Datum r, meosType typel, meosType typer)
 {
-  ensure_temporal_basetype(typel);
-  if (typel != typer)
-    ensure_temporal_basetype(typer);
-  if (typel == T_TIMESTAMPTZ && typer == T_TIMESTAMPTZ)
-    return DatumGetTimestampTz(l) < DatumGetTimestampTz(r);
-  if (typel == T_BOOL && typer == T_BOOL)
-    return DatumGetBool(l) < DatumGetBool(r);
-  if (typel == T_INT4 && typer == T_INT4)
-    return DatumGetInt32(l) < DatumGetInt32(r);
-  if (typel == T_INT8 && typer == T_INT8)
-    return DatumGetInt64(l) < DatumGetInt64(r);
-  if (typel == T_INT4 && typer == T_FLOAT8)
-    return MOBDB_FP_LT((double) DatumGetInt32(l), DatumGetFloat8(r));
-  if (typel == T_FLOAT8 && typer == T_INT4)
-    return MOBDB_FP_LT(DatumGetFloat8(l), (double) DatumGetInt32(r));
-  if (typel == T_FLOAT8 && typer == T_FLOAT8)
-    return MOBDB_FP_LT(DatumGetFloat8(l), DatumGetFloat8(r));
-  if (typel == T_TEXT && typel == typer)
-    return text_cmp(DatumGetTextP(l), DatumGetTextP(r),
-      DEFAULT_COLLATION_OID) < 0;
-  if (typel == T_GEOMETRY && typel == typer)
-    return gserialized_cmp(DatumGetGserializedP(l),
-      DatumGetGserializedP(r)) < 0;
-  if (typel == T_GEOGRAPHY && typel == typer)
-    return gserialized_cmp(DatumGetGserializedP(l),
-      DatumGetGserializedP(r)) < 0;
-#if NPOINT
-  if (typel == T_NPOINT && typel == typer)
-    return npoint_lt(DatumGetNpointP(l), DatumGetNpointP(r));
-#endif
-  elog(ERROR, "unknown datum_lt2 function for base type: %d", typel);
+  return datum_cmp2(l, r, typel, typer) < 0;
 }
 
 
 /**
- * Return true if the first value is less than or equal to the second one
+ * @brief Return true if the first value is less than or equal to the second one
  */
 bool
 datum_le2(Datum l, Datum r, meosType typel, meosType typer)
 {
-  return datum_eq2(l, r, typel, typer) || datum_lt2(l, r, typel, typer);
+  return datum_cmp2(l, r, typel, typer) <= 0;
 }
 
 /**
- * Return true if the first value is greater than the second one
+ * @brief Return true if the first value is greater than the second one
  */
 bool
 datum_gt2(Datum l, Datum r, meosType typel, meosType typer)
 {
-  return datum_lt2(r, l, typer, typel);
+  return datum_cmp2(l, r, typel, typer) > 0;
 }
 
 /**
- * Return true if the first value is greater than or equal to the second one
+ * @brief Return true if the first value is greater than or equal to the second one
  */
 bool
 datum_ge2(Datum l, Datum r, meosType typel, meosType typer)
 {
-  return datum_eq2(l, r, typel, typer) || datum_gt2(l, r, typel, typer);
+  return datum_cmp2(l, r, typel, typer) >= 0;
 }
 
 /*****************************************************************************/
 
 /**
- * Return a Datum true if the values are equal
+ * @brief Return a Datum true if the values are equal
  */
 Datum
 datum2_eq2(Datum l, Datum r, meosType typel, meosType typer)
@@ -288,7 +274,7 @@ datum2_eq2(Datum l, Datum r, meosType typel, meosType typer)
 }
 
 /**
- * Return a Datum true if the values are different
+ * @brief Return a Datum true if the values are different
  */
 Datum
 datum2_ne2(Datum l, Datum r, meosType typel, meosType typer)
@@ -297,7 +283,7 @@ datum2_ne2(Datum l, Datum r, meosType typel, meosType typer)
 }
 
 /**
- * Return a Datum true if the first value is less than the second one
+ * @brief Return a Datum true if the first value is less than the second one
  */
 Datum
 datum2_lt2(Datum l, Datum r, meosType typel, meosType typer)
@@ -306,7 +292,7 @@ datum2_lt2(Datum l, Datum r, meosType typel, meosType typer)
 }
 
 /**
- * Return a Datum true if the first value is less than or equal to the second one
+ * @brief Return a Datum true if the first value is less than or equal to the second one
  */
 Datum
 datum2_le2(Datum l, Datum r, meosType typel, meosType typer)
@@ -315,7 +301,7 @@ datum2_le2(Datum l, Datum r, meosType typel, meosType typer)
 }
 
 /**
- * Return a Datum true if the first value is greater than the second one
+ * @brief Return a Datum true if the first value is greater than the second one
  */
 Datum
 datum2_gt2(Datum l, Datum r, meosType typel, meosType typer)
@@ -324,7 +310,7 @@ datum2_gt2(Datum l, Datum r, meosType typel, meosType typer)
 }
 
 /**
- * Return a Datum true if the first value is greater than or equal to the second one
+ * @brief Return a Datum true if the first value is greater than or equal to the second one
  */
 Datum
 datum2_ge2(Datum l, Datum r, meosType typel, meosType typer)
@@ -338,7 +324,7 @@ datum2_ge2(Datum l, Datum r, meosType typel, meosType typer)
  *****************************************************************************/
 
 /**
- * Return the addition of the two numbers
+ * @brief Return the addition of the two numbers
  */
 Datum
 datum_add(Datum l, Datum r, meosType typel, meosType typer)
@@ -375,7 +361,7 @@ datum_add(Datum l, Datum r, meosType typel, meosType typer)
 }
 
 /**
- * Return the subtraction of the two numbers
+ * @brief Return the subtraction of the two numbers
  */
 Datum
 datum_sub(Datum l, Datum r, meosType typel, meosType typer)
@@ -412,7 +398,7 @@ datum_sub(Datum l, Datum r, meosType typel, meosType typer)
 }
 
 /**
- * Return the multiplication of the two numbers
+ * @brief Return the multiplication of the two numbers
  */
 Datum
 datum_mult(Datum l, Datum r, meosType typel, meosType typer)
@@ -449,7 +435,7 @@ datum_mult(Datum l, Datum r, meosType typel, meosType typer)
 }
 
 /**
- * Return the division of the two numbers
+ * @brief Return the division of the two numbers
  */
 Datum
 datum_div(Datum l, Datum r, meosType typel, meosType typer)
@@ -486,11 +472,76 @@ datum_div(Datum l, Datum r, meosType typel, meosType typer)
 }
 
 /*****************************************************************************
+ * Hash functions on datums
+ *****************************************************************************/
+
+/**
+ * @ingroup libmeos_internal_setspan_accessor
+ * @brief Return the 32-bit hash of a value.
+ */
+uint32
+datum_hash(Datum d, meosType type)
+{
+  ensure_basetype(type);
+  if (type == T_TIMESTAMPTZ)
+    return pg_hashint8(TimestampTzGetDatum(d));
+  else if (type == T_BOOL)
+    return hash_bytes_uint32((int32) DatumGetBool(d));
+  else if (type == T_INT4)
+    return hash_bytes_uint32(DatumGetInt32(d));
+  else if (type == T_INT8)
+    return pg_hashint8(DatumGetInt64(d));
+  else if (type == T_FLOAT8)
+    return pg_hashfloat8(DatumGetFloat8(d));
+  else if (type == T_TEXT)
+    return pg_hashtext(DatumGetTextP(d));
+  else if (geo_basetype(type))
+    return gserialized_hash(DatumGetGserializedP(d));
+#if NPOINT
+  else if (type == T_NPOINT)
+    return npoint_hash(DatumGetNpointP(d));
+#endif
+  else
+    elog(ERROR, "unknown hash function for base type: %d", type);
+}
+
+/**
+ * @ingroup libmeos_internal_setspan_accessor
+ * @brief Return the 64-bit hash of a value using a seed.
+ */
+uint64
+datum_hash_extended(Datum d, meosType type, uint64 seed)
+{
+  ensure_basetype(type);
+  if (type == T_TIMESTAMPTZ)
+    return pg_hashint8extended(TimestampTzGetDatum(d), seed);
+  else if (type == T_BOOL)
+    return hash_bytes_uint32_extended((int32) DatumGetBool(d), seed);
+  else if (type == T_INT4)
+    return hash_bytes_uint32_extended(DatumGetInt32(d), seed);
+  else if (type == T_INT8)
+    return pg_hashint8extended(Int64GetDatum(d), seed);
+  else if (type == T_FLOAT8)
+    return pg_hashfloat8extended(Float8GetDatum(d), seed);
+  else if (type == T_TEXT)
+    return pg_hashtextextended(DatumGetTextP(d), seed);
+  // TODO
+  // else if (geo_basetype(type))
+    // return gserialized_hash_extended(DatumGetGserializedP(d), seed);
+#if NPOINT
+  else if (type == T_NPOINT)
+    return npoint_hash_extended(DatumGetNpointP(d), seed);
+#endif
+  else
+    elog(ERROR, "unknown hash function for base type: %d", type);
+}
+
+/*****************************************************************************
  * Miscellaneous functions
  *****************************************************************************/
 
 /**
- * Align to double
+ * @brief Align to double
  */
 size_t
 double_pad(size_t size)
@@ -501,7 +552,7 @@ double_pad(size_t size)
 }
 
 /**
- * Copy a Datum if it is passed by reference
+ * @brief Copy a Datum if it is passed by reference
  */
 Datum
 datum_copy(Datum value, meosType basetype)
@@ -518,7 +569,7 @@ datum_copy(Datum value, meosType basetype)
 }
 
 /**
- * Convert a number to a double
+ * @brief Convert a number to a double
  */
 double
 datum_double(Datum d, meosType basetype)
@@ -532,12 +583,27 @@ datum_double(Datum d, meosType basetype)
     return DatumGetFloat8(d);
 }
 
+/**
+ * @brief Convert a double to a datum
+ */
+Datum
+double_datum(double d, meosType basetype)
+{
+  ensure_tnumber_basetype(basetype);
+  if (basetype == T_INT4)
+    return Int32GetDatum((int32) d);
+  if (basetype == T_INT8)
+    return Int64GetDatum((int64) d);
+  else /* basetype == T_FLOAT8 */
+    return Float8GetDatum(d);
+}
+
 /*****************************************************************************
  * Sort functions
  *****************************************************************************/
 
 /**
- * Comparator function for datums
+ * @brief Comparator function for datums
  */
 static int
 datum_sort_cmp(const Datum *l, const Datum *r, const meosType *type)
@@ -554,7 +620,7 @@ datum_sort_cmp(const Datum *l, const Datum *r, const meosType *type)
 }
 
 /**
- * Comparator function for timestamps
+ * @brief Comparator function for timestamps
  */
 static int
 timestamp_sort_cmp(const TimestampTz *l, const TimestampTz *r)
@@ -565,7 +631,7 @@ timestamp_sort_cmp(const TimestampTz *l, const TimestampTz *r)
 }
 
 /**
- * Comparator function for spans
+ * @brief Comparator function for spans
  */
 static int
 span_sort_cmp(const Span **l, const Span **r)
@@ -574,7 +640,7 @@ span_sort_cmp(const Span **l, const Span **r)
 }
 
 /**
- * Comparator function for temporal instants
+ * @brief Comparator function for temporal instants
  */
 static int
 tinstarr_sort_cmp(const TInstant **l, const TInstant **r)
@@ -583,7 +649,7 @@ tinstarr_sort_cmp(const TInstant **l, const TInstant **r)
 }
 
 /**
- * Comparator function for temporal sequences
+ * @brief Comparator function for temporal sequences
  */
 static int
 tseqarr_sort_cmp(TSequence **l, TSequence **r)
@@ -596,7 +662,7 @@ tseqarr_sort_cmp(TSequence **l, TSequence **r)
 /*****************************************************************************/
 
 /**
- * Sort function for datums
+ * @brief Sort function for datums
  */
 void
 datumarr_sort(Datum *values, int count, meosType type)
@@ -606,7 +672,7 @@ datumarr_sort(Datum *values, int count, meosType type)
 }
 
 /**
- * Sort function for timestamps
+ * @brief Sort function for timestamps
  */
 void
 timestamparr_sort(TimestampTz *times, int count)
@@ -617,7 +683,7 @@ timestamparr_sort(TimestampTz *times, int count)
 
 #if 0 /* Not used */
 /**
- * Sort function for double2
+ * @brief Sort function for double2
  */
 void
 double2arr_sort(double2 *doubles, int count)
@@ -626,7 +692,7 @@ double2arr_sort(double2 *doubles, int count)
 }
 
 /**
- * Sort function for double3
+ * @brief Sort function for double3
  */
 void
 double3arr_sort(double3 *triples, int count)
@@ -636,7 +702,7 @@ double3arr_sort(double3 *triples, int count)
 #endif
 
 /**
- * Sort function for spans
+ * @brief Sort function for spans
  */
 void
 spanarr_sort(Span **spans, int count)
@@ -646,7 +712,7 @@ spanarr_sort(Span **spans, int count)
 }
 
 /**
- * Sort function for temporal instants
+ * @brief Sort function for temporal instants
  */
 void
 tinstarr_sort(TInstant **instants, int count)
@@ -656,7 +722,7 @@ tinstarr_sort(TInstant **instants, int count)
 }
 
 /**
- * Sort function for temporal sequences
+ * @brief Sort function for temporal sequences
  */
 void
 tseqarr_sort(TSequence **sequences, int count)
@@ -671,7 +737,7 @@ tseqarr_sort(TSequence **sequences, int count)
  *****************************************************************************/
 
 /**
- * Remove duplicates from an array of datums
+ * @brief Remove duplicates from an array of datums
  */
 int
 datumarr_remove_duplicates(Datum *values, int count, meosType type)
@@ -685,7 +751,7 @@ datumarr_remove_duplicates(Datum *values, int count, meosType type)
 }
 
 /**
- * Remove duplicates from an array of timestamps
+ * @brief Remove duplicates from an array of timestamps
  */
 int
 timestamparr_remove_duplicates(TimestampTz *values, int count)
@@ -699,7 +765,7 @@ timestamparr_remove_duplicates(TimestampTz *values, int count)
 }
 
 /**
- * Remove duplicates from an array of temporal instants
+ * @brief Remove duplicates from an array of temporal instants
  */
 int
 tinstarr_remove_duplicates(const TInstant **instants, int count)
@@ -717,7 +783,7 @@ tinstarr_remove_duplicates(const TInstant **instants, int count)
  *****************************************************************************/
 
 /**
- * Convert a C binary string into a bytea
+ * @brief Convert a C binary string into a bytea
  */
 bytea *
 bstring2bytea(const uint8_t *wkb, size_t size)
@@ -729,7 +795,7 @@ bstring2bytea(const uint8_t *wkb, size_t size)
 }
 
 /**
- * Convert a C string into a text value
+ * @brief Convert a C string into a text value
  *
  * @note We don't include <utils/builtins.h> to avoid collisions with json-c/json.h
  * @note Function taken from PostGIS file lwgeom_in_geojson.c
@@ -745,7 +811,7 @@ cstring2text(const char *cstring)
 }
 
 /**
- * Convert a text value into a C string
+ * @brief Convert a text value into a C string
  *
  * @note We don't include <utils/builtins.h> to avoid collisions with json-c/json.h
  * @note Function taken from PostGIS file lwgeom_in_geojson.c
@@ -766,15 +832,15 @@ int
 varstr_cmp(const char *arg1, int len1, const char *arg2, int len2,
   Oid collid __attribute__((unused)))
 {
-	int result = memcmp(arg1, arg2, Min(len1, len2));
+  int result = memcmp(arg1, arg2, Min(len1, len2));
   if ((result == 0) && (len1 != len2))
     result = (len1 < len2) ? -1 : 1;
   return result;
-	}
+}
 #endif /* MEOS */
 
 /**
- * Comparison function for text values
+ * @brief Comparison function for text values
  *
  * @note Function copied from PostgreSQL since it is not exported
  */
@@ -798,7 +864,7 @@ text_cmp(text *arg1, text *arg2, Oid collid __attribute__((unused)))
  *****************************************************************************/
 
 /**
- * Free a C array of pointers
+ * @brief Free a C array of pointers
  */
 void
 pfree_array(void **array, int count)
@@ -810,7 +876,7 @@ pfree_array(void **array, int count)
 }
 
 /**
- * Free a C array of Datum pointers
+ * @brief Free a C array of Datum pointers
  */
 void
 pfree_datumarr(Datum *array, int count)
@@ -822,29 +888,53 @@ pfree_datumarr(Datum *array, int count)
 }
 
 /**
- * Return the string resulting from assembling the array of strings.
+ * @brief Return the string resulting from assembling the array of strings.
  * The function frees the memory of the input strings after finishing.
+ * @param[in] strings Array of strings to ouput
+ * @param[in] count Number of elements in the input array
+ * @param[in] outlen Total length of the elements and the additional ','
+ * @param[in] prefix Prefix to add to the string (e.g., for interpolation)
+ * @param[in] open, close Starting/ending character (e.g., '{' and '}')
+ * @param[in] quotes True when elements should be enclosed into quotes
+ * @param[in] spaces True when elements should be separated by spaces
  */
 char *
-stringarr_to_string(char **strings, int count, int outlen,
-  char *prefix, char open, char close)
+stringarr_to_string(char **strings, int count, int outlen, char *prefix,
+  char open, char close, bool quotes, bool spaces)
 {
-  char *result = palloc(strlen(prefix) + outlen + 3);
-  result[outlen] = '\0';
+  int size = strlen(prefix) + outlen + 3;
+  if (quotes)
+    size += count * 4;
+  if (spaces)
+    size += count;
+  char *result = palloc(size);
   size_t pos = 0;
   strcpy(result, prefix);
   pos += strlen(prefix);
   result[pos++] = open;
   for (int i = 0; i < count; i++)
   {
+    if (quotes)
+      result[pos++] = '"';
     strcpy(result + pos, strings[i]);
     pos += strlen(strings[i]);
+    if (quotes)
+      result[pos++] = '"';
     result[pos++] = ',';
-    result[pos++] = ' ';
+    if (spaces)
+      result[pos++] = ' ';
     pfree(strings[i]);
   }
-  result[pos - 2] = close;
-  result[pos - 1] = '\0';
+  if (spaces)
+  {
+    result[pos - 2] = close;
+    result[pos - 1] = '\0';
+  }
+  else
+  {
+    result[pos - 1] = close;
+    result[pos] = '\0';
+  }
   pfree(strings);
   return result;
 }
@@ -854,7 +944,7 @@ stringarr_to_string(char **strings, int count, int outlen,
  *****************************************************************************/
 
 /**
- * Determine the 3D hypotenuse.
+ * @brief Determine the 3D hypotenuse.
  *
  * If required, x, y, and z are swapped to make x the larger number. The
  * traditional formula of x^2+y^2+z^2 is rearranged to factor x outside the
@@ -916,8 +1006,7 @@ hypot3d(double x, double y, double z)
 
 #if 0 /* not used */
 /**
- * Determine the 4D hypotenuse.
- *
+ * @brief Determine the 4D hypotenuse.
  * @see The function is a generalization of the 3D case in function hypot3d
  */
 double
@@ -981,7 +1070,7 @@ hypot4d(double x, double y, double z, double m)
  *****************************************************************************/
 
 /**
- * Call input function of the base type
+ * @brief Call input function of the base type
  */
 Datum
 #if NPOINT
@@ -990,7 +1079,7 @@ basetype_in(const char *str, meosType basetype, bool end)
 basetype_in(const char *str, meosType basetype, bool end __attribute__((unused)))
 #endif
 {
-  ensure_temporal_basetype(basetype);
+  ensure_basetype(basetype);
   switch (basetype)
   {
     case T_TIMESTAMPTZ:
@@ -1020,12 +1109,12 @@ basetype_in(const char *str, meosType basetype, bool end __attribute__((unused))
 }
 
 /**
- * Call output function of the base type
+ * @brief Call output function of the base type
  */
 char *
 basetype_out(Datum value, meosType basetype, int maxdd)
 {
-  ensure_temporal_basetype(basetype);
+  ensure_basetype(basetype);
   switch (basetype)
   {
     case T_TIMESTAMPTZ:
