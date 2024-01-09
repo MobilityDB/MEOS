@@ -33,8 +33,8 @@
  * function manager fmgr.c.
  */
 
-#ifndef __PGIS_CALL_H__
-#define __PGIS_CALL_H__
+#ifndef __PGIS_TYPES_H__
+#define __PGIS_TYPES_H__
 
 /*****************************************************************************/
 
@@ -59,24 +59,24 @@ extern LWGEOM *box3d_to_lwgeom(BOX3D *box);
 /* Functions adapted from lwgeom_functions_basic.c */
 
 /* The implementation of this function changed in PostGIS version 3.2 */
-extern GSERIALIZED *gserialized_boundary(const GSERIALIZED *gs);
-extern GSERIALIZED *gserialized_shortestline2d(const GSERIALIZED *gs1,
+extern GSERIALIZED *geometry_boundary(const GSERIALIZED *gs);
+extern GSERIALIZED *geo_shortestline2d(const GSERIALIZED *gs1,
   const GSERIALIZED *s2);
-extern GSERIALIZED *gserialized_shortestline3d(const GSERIALIZED *gs1,
+extern GSERIALIZED *geometry_shortestline3d(const GSERIALIZED *gs1,
   const GSERIALIZED *s2);
-extern double gserialized_distance(const GSERIALIZED *gs1,
+extern double geo_distance(const GSERIALIZED *gs1,
   const GSERIALIZED *gs2);
-extern double gserialized_3Ddistance(const GSERIALIZED *gs1,
+extern double geometry_3Ddistance(const GSERIALIZED *gs1,
   const GSERIALIZED *gs2);
-extern bool gserialized_3Dintersects(const GSERIALIZED *gs1,
+extern bool geometry_3Dintersects(const GSERIALIZED *gs1,
   const GSERIALIZED *gs2);
-extern bool gserialized_dwithin(const GSERIALIZED *gs1,
+extern bool geometry_dwithin2d(const GSERIALIZED *gs1,
   const GSERIALIZED *gs2, double tolerance);
-extern bool gserialized_dwithin3d(const GSERIALIZED *gs1,
+extern bool geometry_dwithin3d(const GSERIALIZED *gs1,
   const GSERIALIZED *gs2, double tolerance);
-extern bool gserialized_relate_pattern(const GSERIALIZED *gs1,
+extern bool geo_relate_pattern(const GSERIALIZED *gs1,
   const GSERIALIZED *gs2, char *patt);
-extern GSERIALIZED *gserialized_reverse(const GSERIALIZED *geom);
+extern GSERIALIZED *geo_reverse(const GSERIALIZED *geom);
 extern bool gserialized_azimuth(GSERIALIZED *gs1, GSERIALIZED *gs2,
   double *result);
 
@@ -85,50 +85,48 @@ extern bool gserialized_azimuth(GSERIALIZED *gs1, GSERIALIZED *gs2,
 extern GEOSGeometry *POSTGIS2GEOS(const GSERIALIZED *pglwgeom);
 extern GSERIALIZED *GEOS2POSTGIS(GEOSGeom geom, char want3d);
 
-extern bool gserialized_spatialrel(const GSERIALIZED *gs1,
+extern bool geometry_spatialrel(const GSERIALIZED *gs1,
   const GSERIALIZED *gs2, spatialRel rel);
-extern GSERIALIZED *gserialized_intersection(const GSERIALIZED *gs1,
+extern GSERIALIZED *geometry_intersection(const GSERIALIZED *gs1,
   const GSERIALIZED *gs2);
-extern GSERIALIZED *gserialized_array_union(GSERIALIZED **gsarr, int nelems);
-extern GSERIALIZED *gserialized_buffer(const GSERIALIZED *gs, double size,
+extern GSERIALIZED *geometry_array_union(GSERIALIZED **gsarr, int nelems);
+extern GSERIALIZED *geometry_buffer(const GSERIALIZED *gs, double size,
   char *params);
-extern GSERIALIZED *gserialized_convex_hull(const GSERIALIZED *gs);
-extern double gserialized_hausdorffdistance(const GSERIALIZED *gs1,
-  const GSERIALIZED *gs2);
+extern GSERIALIZED *geometry_convex_hull(const GSERIALIZED *gs);
 
 /* Functions adapted from geography_measurement.c */
 
-extern double gserialized_geog_length(GSERIALIZED *g, bool use_spheroid);
-extern bool gserialized_geog_dwithin(GSERIALIZED *g1, GSERIALIZED *g2,
+extern double pgis_geography_length(GSERIALIZED *g, bool use_spheroid);
+extern bool pgis_geography_dwithin(GSERIALIZED *g1, GSERIALIZED *g2,
   double tolerance, bool use_spheroid);
-extern double gserialized_geog_distance(const GSERIALIZED *g1,
+extern double pgis_geography_distance(const GSERIALIZED *g1,
   const GSERIALIZED *g2);
 
 /* Functions adapted from geography_inout.c */
 
 extern GSERIALIZED *gserialized_geog_from_geom(GSERIALIZED *geom);
-extern GSERIALIZED *gserialized_geom_from_geog(GSERIALIZED *g_ser);
+extern GSERIALIZED *gserialized_geom_from_geog(GSERIALIZED *geog);
 
 /* Functions adapted from lwgeom_functions_analytic.c */
 
-extern GSERIALIZED *gserialized_line_interpolate_point(GSERIALIZED *gser,
+extern GSERIALIZED *linestring_line_interpolate_point(GSERIALIZED *gser,
   double distance_fraction, char repeat);
-extern GSERIALIZED *gserialized_line_substring(GSERIALIZED *geom, double from,
+extern GSERIALIZED *linestring_substring(GSERIALIZED *geom, double from,
   double to);
 
 /* Functions adapted from lwgeom_lrs.c */
 
 extern LWGEOM *lwgeom_line_interpolate_point(LWGEOM *geom, double fraction,
   int32_t srid, char repeat);
-extern double gserialized_line_locate_point(GSERIALIZED *gs1,
+extern double linestring_locate_point(GSERIALIZED *gs1,
   GSERIALIZED *gs2);
 
 /* Functions adapted from lwgeom_ogc.c */
 
-extern GSERIALIZED *gserialized_pointn_linestring(const GSERIALIZED *geom,
+extern GSERIALIZED *linestring_point_n(const GSERIALIZED *geom,
   int where);
-extern int gserialized_numpoints_linestring(const GSERIALIZED *geom);
+extern int linestring_numpoints(const GSERIALIZED *geom);
 
 /*****************************************************************************/
 
-#endif /* __PGIS_CALL_H__ */
+#endif /* __PGIS_TYPES_H__ */

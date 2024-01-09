@@ -29,14 +29,13 @@
 
 /**
  * @file
- * @brief Spatial restriction functions for temporal points.
+ * @brief Spatial restriction functions for temporal points
  */
-
-#include "point/tpoint_spatialfuncs.h"
 
 /* C */
 #include <assert.h>
 /* PostgreSQL */
+#include <postgres.h>
 #include <utils/float.h>
 #include <utils/timestamp.h>
 /* PostGIS */
@@ -48,8 +47,10 @@
 #include <meos_internal.h>
 #include "general/lifting.h"
 #include "general/span.h"
+#include "general/temporal_restrict.h"
 #include "general/tsequence.h"
 #include "general/type_util.h"
+#include "point/tpoint_spatialfuncs.h"
 #include "point/tpoint_spatialrels.h"
 
 /*****************************************************************************
@@ -57,7 +58,7 @@
  *****************************************************************************/
 
 /**
- * @brief For a point to be in 2D
+ * @brief Force a point to be in 2D
  */
 static Datum
 point_force2d(Datum point, Datum srid)
@@ -69,7 +70,7 @@ point_force2d(Datum point, Datum srid)
 }
 
 /**
- * @brief Force a temporal point to be in 2D.
+ * @brief Force a temporal point to be in 2D
  * @param[in] temp Temporal point
  * @pre The temporal point has Z dimension
  */
@@ -95,650 +96,6 @@ tpoint_force2d(const Temporal *temp)
 }
 
 /*****************************************************************************
- * Functions computing the intersection of two segments derived from PostGIS
- * The seg2d_intersection function is a modified version of the PostGIS
- * lw_segment_intersects function and also returns the intersection point
- * in case the two segments intersect at equal endpoints.
- * The intersection point is required in tpointseq_linear_find_splits
- * only for this intersection type (MEOS_SEG_TOUCH_END).
- *****************************************************************************/
-
-/*
- * The possible ways a pair of segments can interact.
- * Returned by the function seg2d_intersection
- */
-enum
-{
-  MEOS_SEG_NO_INTERSECTION,  /* Segments do not intersect */
-  MEOS_SEG_OVERLAP,          /* Segments overlap */
-  MEOS_SEG_CROSS,            /* Segments cross */
-  MEOS_SEG_TOUCH_END,        /* Segments touch in two equal enpoints */
-  MEOS_SEG_TOUCH,            /* Segments touch without equal enpoints */
-} MEOS_SEG_INTER_TYPE;
-
-/**
- * @brief Find the UNIQUE point of intersection p between two closed
- * collinear segments ab and cd. Return p and a MEOS_SEG_INTER_TYPE value.
- * @note If the segments overlap no point is returned since they
- * can be an infinite number of them.
- * @pre This function is called after verifying that the points are
- * collinear and that their bounding boxes intersect.
- */
-static int
-parseg2d_intersection(const POINT2D *a, const POINT2D *b, const POINT2D *c,
-  const POINT2D *d, POINT2D *p)
-{
-  /* Compute the intersection of the bounding boxes */
-  double xmin = Max(Min(a->x, b->x), Min(c->x, d->x));
-  double xmax = Min(Max(a->x, b->x), Max(c->x, d->x));
-  double ymin = Max(Min(a->y, b->y), Min(c->y, d->y));
-  double ymax = Min(Max(a->y, b->y), Max(c->y, d->y));
-  /* If the intersection of the bounding boxes is not a point */
-  if (xmin < xmax || ymin < ymax )
-    return MEOS_SEG_OVERLAP;
-  /* We are sure that the segments touch each other */
-  if ((b->x == c->x && b->y == c->y) ||
-      (b->x == d->x && b->y == d->y))
-  {
-    p->x = b->x;
-    p->y = b->y;
-    return MEOS_SEG_TOUCH_END;
-  }
-  if ((a->x == c->x && a->y == c->y) ||
-      (a->x == d->x && a->y == d->y))
-  {
-    p->x = a->x;
-    p->y = a->y;
-    return MEOS_SEG_TOUCH_END;
-  }
-  /* We should never arrive here since this function is called after verifying
-   * that the bounding boxes of the segments intersect */
-  return MEOS_SEG_NO_INTERSECTION;
-}
-
-/**
- * @brief Determines the side of segment P where Q lies
- * Return -1  if point Q is left of segment P
- * Return  1  if point Q is right of segment P
- * Return  0  if point Q in on segment P
- * @note adapted from lw_segment_side to take into account precision errors
- */
-static int
-seg2d_side(const POINT2D *p1, const POINT2D *p2, const POINT2D *q)
-{
-  double side = ( (q->x - p1->x) * (p2->y - p1->y) -
-    (p2->x - p1->x) * (q->y - p1->y) );
-  if (fabs(side) < MEOS_EPSILON)
-    return 0;
-  else
-    return SIGNUM(side);
-}
-
-/**
- * @brief Function derived from PostGIS file lwalgorithm.c since it is declared
- * static
- */
-static bool
-lw_seg_interact(const POINT2D *p1, const POINT2D *p2, const POINT2D *q1,
-  const POINT2D *q2)
-{
-  double minq = FP_MIN(q1->x, q2->x);
-  double maxq = FP_MAX(q1->x, q2->x);
-  double minp = FP_MIN(p1->x, p2->x);
-  double maxp = FP_MAX(p1->x, p2->x);
-
-  if (FP_GT(minp, maxq) || FP_LT(maxp, minq))
-    return false;
-
-  minq = FP_MIN(q1->y, q2->y);
-  maxq = FP_MAX(q1->y, q2->y);
-  minp = FP_MIN(p1->y, p2->y);
-  maxp = FP_MAX(p1->y, p2->y);
-
-  if (FP_GT(minp,maxq) || FP_LT(maxp,minq))
-    return false;
-
-  return true;
-}
-
-/**
- * @brief Find the UNIQUE point of intersection p between two closed segments
- * ab and cd. Return p and a MEOS_SEG_INTER_TYPE value.
- * @note Currently, the function only computes p if the result value is
- * MEOS_SEG_TOUCH_END, since the return value is never used in other cases.
- * @note If the segments overlap no point is returned since they can be an
- * infinite number of them.
- */
-static int
-seg2d_intersection(const POINT2D *a, const POINT2D *b, const POINT2D *c,
-  const POINT2D *d, POINT2D *p)
-{
-  /* assume the following names: p = Segment(a, b), q = Segment(c, d) */
-  int pq1, pq2, qp1, qp2;
-
-  /* No envelope interaction => we are done. */
-  if (! lw_seg_interact(a, b, c, d))
-    return MEOS_SEG_NO_INTERSECTION;
-
-  /* Are the start and end points of q on the same side of p? */
-  pq1 = seg2d_side(a, b, c);
-  pq2 = seg2d_side(a, b, d);
-  if ((pq1 > 0 && pq2 > 0) || (pq1 < 0 && pq2 < 0))
-    return MEOS_SEG_NO_INTERSECTION;
-
-  /* Are the start and end points of p on the same side of q? */
-  qp1 = seg2d_side(c, d, a);
-  qp2 = seg2d_side(c, d, b);
-  if ((qp1 > 0 && qp2 > 0) || (qp1 < 0 && qp2 < 0))
-    return MEOS_SEG_NO_INTERSECTION;
-
-  /* Nobody is on one side or another? Must be colinear. */
-  if (pq1 == 0 && pq2 == 0 && qp1 == 0 && qp2 == 0)
-    return parseg2d_intersection(a, b, c, d, p);
-
-  /* Check if the intersection is an endpoint */
-  if (pq1 == 0 || pq2 == 0 || qp1 == 0 || qp2 == 0)
-  {
-    /* Check for two equal endpoints */
-    if ((b->x == c->x && b->y == c->y) ||
-        (b->x == d->x && b->y == d->y))
-    {
-      p->x = b->x;
-      p->y = b->y;
-      return MEOS_SEG_TOUCH_END;
-    }
-    if ((a->x == c->x && a->y == c->y) ||
-        (a->x == d->x && a->y == d->y))
-    {
-      p->x = a->x;
-      p->y = a->y;
-      return MEOS_SEG_TOUCH_END;
-    }
-
-    /* The intersection is inside one of the segments
-     * note: p is not compute for this type of intersection */
-    return MEOS_SEG_TOUCH;
-  }
-
-  /* Crossing
-   * note: p is not compute for this type of intersection */
-  return MEOS_SEG_CROSS;
-}
-
-/*****************************************************************************
- * Non self-intersecting (a.k.a. simple) functions
- *****************************************************************************/
-
-/**
- * @brief Split a temporal point sequence with discrete or step
- * interpolation into an array of non self-intersecting fragments
- * @param[in] seq Temporal point
- * @param[out] count Number of elements in the resulting array
- * @result Boolean array determining the instant numbers at which the
- * discrete sequence must be split
- * @pre The temporal point has at least 2 instants
- */
-static bool *
-tpointseq_discstep_find_splits(const TSequence *seq, int *count)
-{
-  assert(! MEOS_FLAGS_LINEAR_INTERP(seq->flags));
-  assert(seq->count > 1);
-  /* bitarr is an array of bool for collecting the splits */
-  bool *bitarr = palloc0(sizeof(bool) * seq->count);
-  int numsplits = 0;
-  int start = 0, end = seq->count - 1;
-  while (start < end)
-  {
-    /* Find intersections in the piece defined by start and end in a
-     * breadth-first search */
-    int j = start, k = start + 1;
-    Datum value1 = tinstant_value(TSEQUENCE_INST_N(seq, j));
-    Datum value2 = tinstant_value(TSEQUENCE_INST_N(seq, k));
-    while (true)
-    {
-      if (datum_point_eq(value1, value2))
-      {
-        /* Set the new start */
-        bitarr[k] = true;
-        numsplits++;
-        start = k;
-        break;
-      }
-      if (j < k - 1)
-      {
-        j++;
-        value1 = tinstant_value(TSEQUENCE_INST_N(seq, j));
-      }
-      else
-      {
-        k++;
-        if (k > end)
-          break;
-        j = start;
-        value1 = tinstant_value(TSEQUENCE_INST_N(seq, j));
-        value2 = tinstant_value(TSEQUENCE_INST_N(seq, k));
-      }
-    }
-    if (k > end)
-      break;
-  }
-  *count = numsplits;
-  return bitarr;
-}
-
-/**
- * @brief Split a temporal point sequence with linear interpolation into an
- * array of non self-intersecting fragments.
- * @note The function works only on 2D even if the input points are in 3D
- * @param[in] seq Temporal point
- * @param[out] count Number of elements in the resulting array
- * @result Boolean array determining the instant numbers at which the
- * sequence must be split
- * @pre The input sequence has at least 3 instants
- */
-static bool *
-tpointseq_linear_find_splits(const TSequence *seq, int *count)
-{
-  assert(seq->count >= 2);
- /* points is an array of points in the sequence */
-  const POINT2D **points = palloc0(sizeof(POINT2D *) * seq->count);
-  /* bitarr is an array of bool for collecting the splits */
-  bool *bitarr = palloc0(sizeof(bool) * seq->count);
-  points[0] = DATUM_POINT2D_P(tinstant_value(TSEQUENCE_INST_N(seq, 0)));
-  int numsplits = 0;
-  for (int i = 1; i < seq->count; i++)
-  {
-    points[i] = DATUM_POINT2D_P(tinstant_value(TSEQUENCE_INST_N(seq, i)));
-    /* If stationary segment we need to split the sequence */
-    if (points[i - 1]->x == points[i]->x && points[i - 1]->y == points[i]->y)
-    {
-      if (i > 1 && ! bitarr[i - 1])
-      {
-        bitarr[i - 1] = true;
-        numsplits++;
-      }
-      if (i < seq->count - 1)
-      {
-        bitarr[i] = true;
-        numsplits++;
-      }
-    }
-  }
-
-  /* Loop for every split due to stationary segments while adding
-   * additional splits due to intersecting segments */
-  int start = 0;
-  while (start < seq->count - 2)
-  {
-    int end = start + 1;
-    while (end < seq->count - 1 && ! bitarr[end])
-      end++;
-    if (end == start + 1)
-    {
-      start = end;
-      continue;
-    }
-    /* Find intersections in the piece defined by start and end in a
-     * breadth-first search */
-    int i = start, j = start + 1;
-    while (j < end)
-    {
-      /* If the bounding boxes of the segments intersect */
-      if (lw_seg_interact(points[i], points[i + 1], points[j],
-        points[j + 1]))
-      {
-        /* Candidate for intersection */
-        POINT2D p = { 0 }; /* make compiler quiet */
-        int intertype = seg2d_intersection(points[i], points[i + 1],
-          points[j], points[j + 1], &p);
-        if (intertype > 0 &&
-          /* Exclude the case when two consecutive segments that
-           * necessarily touch each other in their common point */
-          (intertype != MEOS_SEG_TOUCH_END || j != i + 1 ||
-           p.x != points[j]->x || p.y != points[j]->y))
-        {
-          /* Set the new end */
-          end = j;
-          bitarr[end] = true;
-          numsplits++;
-          break;
-        }
-      }
-      if (i < j - 1)
-        i++;
-      else
-      {
-        j++;
-        i = start;
-      }
-    }
-    /* Process the next split */
-    start = end;
-  }
-  pfree(points);
-  *count = numsplits;
-  return bitarr;
-}
-
-/*****************************************************************************
- * Functions for testing whether a temporal point is simple and for spliting
- * a temporal point into an array of temporal points that are simple.
- * A temporal point is simple if all its components are non self-intersecting.
- * - a temporal instant point is simple
- * - a temporal discrete sequence point is simple if it is non self-intersecting
- * - a temporal sequence point is simple if it is non self-intersecting and
- *   do not have stationary segments
- * - a temporal sequence set point is simple if every composing sequence is
- *   simple even if two composing sequences intersect
- *****************************************************************************/
-
-/**
- * @brief Return true if a temporal point does not self-intersect.
- * @param[in] seq Temporal point
- * @pre The temporal point sequence has discrete or step interpolation
- */
-static bool
-tpointseq_discstep_is_simple(const TSequence *seq)
-{
-  assert(seq->count > 1);
-  Datum *points = palloc(sizeof(Datum) * seq->count);
-  for (int i = 0; i < seq->count; i++)
-  {
-    const TInstant *inst = TSEQUENCE_INST_N(seq, i);
-    points[i] = tinstant_value(inst);
-  }
-  datumarr_sort(points, seq->count, temptype_basetype(seq->temptype));
-  bool found = false;
-  for (int i = 1; i < seq->count; i++)
-  {
-    if (datum_point_eq(points[i - 1], points[i]))
-    {
-      found = true;
-      break;
-    }
-  }
-  pfree(points);
-  return ! found;
-}
-
-/**
- * @ingroup libmeos_internal_temporal_spatial_accessor
- * @brief Return true if a temporal point does not self-intersect.
- * @param[in] seq Temporal point
- * @csqlfn #Tpoint_is_simple()
- */
-bool
-tpointseq_is_simple(const TSequence *seq)
-{
-  assert(seq);
-  assert(tgeo_type(seq->temptype));
-  if (seq->count == 1)
-    return true;
-
-  if (! MEOS_FLAGS_LINEAR_INTERP(seq->flags))
-    return tpointseq_discstep_is_simple(seq);
-
-  int numsplits;
-  bool *splits = tpointseq_linear_find_splits(seq, &numsplits);
-  pfree(splits);
-  return (numsplits == 0);
-}
-
-/**
- * @ingroup libmeos_internal_temporal_spatial_accessor
- * @brief Return true if a temporal point does not self-intersect.
- * @param[in] ss Temporal sequence set
- * @csqlfn #Tpoint_is_simple()
- */
-bool
-tpointseqset_is_simple(const TSequenceSet *ss)
-{
-  assert(ss);
-  assert(tgeo_type(ss->temptype));
-  bool result = true;
-  for (int i = 0; i < ss->count; i++)
-  {
-    const TSequence *seq = TSEQUENCESET_SEQ_N(ss, i);
-    result &= tpointseq_is_simple(seq);
-    if (! result)
-      break;
-  }
-  return result;
-}
-
-/**
- * @ingroup libmeos_temporal_spatial_accessor
- * @brief Return true if a temporal point does not self-intersect.
- * @param[in] temp Temporal point
- * @csqlfn #Tpoint_is_simple()
- */
-bool
-tpoint_is_simple(const Temporal *temp)
-{
-  /* Ensure validity of the arguments */
-  if (! ensure_not_null((void *) temp) || ! ensure_tgeo_type(temp->temptype))
-    return false;
-
-  bool result;
-  assert(temptype_subtype(temp->subtype));
-  if (temp->subtype == TINSTANT)
-    result = true;
-  else if (temp->subtype == TSEQUENCE)
-    result = tpointseq_is_simple((TSequence *) temp);
-  else /* temp->subtype == TSEQUENCESET */
-    result = tpointseqset_is_simple((TSequenceSet *) temp);
-  return result;
-}
-
-/*****************************************************************************/
-
-/**
- * @brief Split a temporal discrete sequence point into an array of non
- * self-intersecting fragments.
- * @param[in] seq Temporal point
- * @param[in] splits Bool array stating the splits
- * @param[in] count Number of elements in the resulting array
- * @pre The discrete sequence has at least two instants
- */
-static TSequence **
-tpointdiscseq_split(const TSequence *seq, bool *splits, int count)
-{
-  assert(seq->count > 1);
-  const TInstant **instants = palloc(sizeof(TInstant *) * seq->count);
-  TSequence **result = palloc(sizeof(TSequence *) * count);
-  /* Create the splits */
-  int start = 0, nseqs = 0;
-  while (start < seq->count)
-  {
-    int end = start + 1;
-    while (end < seq->count && ! splits[end])
-      end++;
-    /* Construct piece from start to end */
-    for (int j = 0; j < end - start; j++)
-      instants[j] = TSEQUENCE_INST_N(seq, j + start);
-    result[nseqs++] = tsequence_make(instants, end - start, true, true,
-      DISCRETE, NORMALIZE_NO);
-    /* Continue with the next split */
-    start = end;
-  }
-  pfree(instants);
-  return result;
-}
-
-/**
- * @brief Split a temporal point into an array of non self-intersecting
- * fragments
- * @param[in] seq Temporal sequence point
- * @param[in] splits Bool array stating the splits
- * @param[in] count Number of elements in the resulting array
- * @note This function is called for each sequence of a sequence set
- */
-static TSequence **
-tpointcontseq_split(const TSequence *seq, bool *splits, int count)
-{
-  assert(seq->count > 2);
-  bool linear = MEOS_FLAGS_LINEAR_INTERP(seq->flags);
-  TInstant **instants = palloc(sizeof(TInstant *) * seq->count);
-  TSequence **result = palloc(sizeof(TSequence *) * count);
-  /* Create the splits */
-  int start = 0, nseqs = 0;
-  while (start < seq->count - 1)
-  {
-    int end = start + 1;
-    while (end < seq->count - 1 && ! splits[end])
-      end++;
-    /* Construct fragment from start to end inclusive */
-    for (int j = 0; j <= end - start; j++)
-      instants[j] = (TInstant *) TSEQUENCE_INST_N(seq, j + start);
-    bool lower_inc1 = (start == 0) ? seq->period.lower_inc : true;
-    bool upper_inc1 = (end == seq->count - 1) ?
-      seq->period.upper_inc && ! splits[seq->count - 1] : false;
-    /* The last two values of sequences with step interpolation and
-     * exclusive upper bound must be equal */
-    bool tofree = false;
-    if (! linear && ! upper_inc1 &&
-      ! datum_point_eq(tinstant_value(instants[end - start - 1]),
-      tinstant_value(instants[end - start])))
-    {
-      Datum value = tinstant_value(instants[end - start - 1]);
-      TimestampTz t = (instants[end - start])->t;
-      instants[end - start] = tinstant_make(value, seq->temptype, t);
-      tofree = true;
-      upper_inc1 = false;
-    }
-    result[nseqs++] = tsequence_make((const TInstant **) instants, end - start + 1,
-      lower_inc1, upper_inc1, linear ? LINEAR : STEP, NORMALIZE_NO);
-    if (tofree)
-      /* Free the last instant created for the step interpolation */
-      pfree(instants[end - start]);
-    /* Continue with the next split */
-    start = end;
-  }
-  if (nseqs < count)
-  {
-    /* Construct last fragment containing the last instant of sequence */
-    instants[0] = (TInstant *) TSEQUENCE_INST_N(seq, seq->count - 1);
-    result[nseqs++] = tsequence_make((const TInstant **) instants,
-      seq->count - start, true, seq->period.upper_inc,
-      linear, NORMALIZE_NO);
-  }
-  pfree(instants);
-  return result;
-}
-
-/**
- * @ingroup libmeos_internal_temporal_spatial_transf
- * @brief Split a temporal sequence point into an array of non
- * self-intersecting fragments.
- * @param[in] seq Temporal sequence point
- * @param[out] count Number of elements in the resulting array
- * @note This function is called for each sequence of a sequence set
- * @csqlfn #Tpoint_make_simple()
- */
-TSequence **
-tpointseq_make_simple(const TSequence *seq, int *count)
-{
-  assert(seq); assert(count);
-  assert(tgeo_type(seq->temptype));
-  interpType interp = MEOS_FLAGS_GET_INTERP(seq->flags);
-  TSequence **result;
-  /* Special cases when the input sequence has 1 or 2 instants */
-  if ((interp == DISCRETE && seq->count == 1) ||
-      (interp != DISCRETE && seq->count <= 2))
-  {
-    result = palloc(sizeof(TSequence *));
-    result[0] = tsequence_copy(seq);
-    *count = 1;
-    return result;
-  }
-
-  int numsplits;
-  bool *splits = (interp == LINEAR) ?
-    tpointseq_linear_find_splits(seq, &numsplits) :
-    tpointseq_discstep_find_splits(seq, &numsplits);
-  if (numsplits == 0)
-  {
-    result = palloc(sizeof(TSequence *));
-    result[0] = tsequence_copy(seq);
-    pfree(splits);
-    *count = 1;
-    return result;
-  }
-
-  result = (interp == DISCRETE) ?
-    tpointdiscseq_split(seq, splits, numsplits + 1) :
-    tpointcontseq_split(seq, splits, numsplits + 1);
-  pfree(splits);
-  *count = numsplits + 1;
-  return result;
-}
-
-/**
- * @ingroup libmeos_internal_temporal_spatial_transf
- * @brief Split a temporal sequence set point into an array of non
- * self-intersecting fragments.
- * @param[in] ss Temporal sequence set point
- * @param[out] count Number of elements in the output array
- * @csqlfn #Tpoint_make_simple()
- */
-TSequence **
-tpointseqset_make_simple(const TSequenceSet *ss, int *count)
-{
-  assert(ss); assert(count);
-  assert(tgeo_type(ss->temptype));
-  /* Singleton sequence set */
-  if (ss->count == 1)
-    return tpointseq_make_simple(TSEQUENCESET_SEQ_N(ss, 0), count);
-
-  /* General case */
-  TSequence ***sequences = palloc0(sizeof(TSequence **) * ss->count);
-  int *nseqs = palloc0(sizeof(int) * ss->count);
-  int totalseqs = 0;
-  for (int i = 0; i < ss->count; i++)
-  {
-    const TSequence *seq = TSEQUENCESET_SEQ_N(ss, i);
-    sequences[i] = tpointseq_make_simple(seq, &nseqs[i]);
-    totalseqs += nseqs[i];
-  }
-  assert(totalseqs > 0);
-  *count = totalseqs;
-  return tseqarr2_to_tseqarr(sequences, nseqs, ss->count, totalseqs);
-}
-
-/**
- * @ingroup libmeos_temporal_spatial_transf
- * @brief Split a temporal point into an array of non self-intersecting
- * fragments.
- * @param[in] temp Temporal point
- * @param[out] count Number of elements in the output array
- * @see #tpointseq_make_simple
- * @see #tpointseqset_make_simple
- * @csqlfn #Tpoint_make_simple()
- */
-Temporal **
-tpoint_make_simple(const Temporal *temp, int *count)
-{
-  /* Ensure validity of the arguments */
-  if (! ensure_not_null((void *) temp) || ! ensure_not_null((void *) count) ||
-      ! ensure_tgeo_type(temp->temptype))
-    return NULL;
-
-  Temporal **result;
-  assert(temptype_subtype(temp->subtype));
-  if (temp->subtype == TINSTANT)
-  {
-    result = palloc0(sizeof(TInstant *));
-    result[0] = (Temporal *) tinstant_copy((TInstant *) temp);
-    *count = 1;
-  }
-  else if (temp->subtype == TSEQUENCE)
-    result = (Temporal **) tpointseq_make_simple((TSequence *) temp, count);
-  else /* temp->subtype == TSEQUENCESET */
-    result = (Temporal **) tpointseqset_make_simple((TSequenceSet *) temp, count);
-  return result;
-}
-
-/*****************************************************************************
  * Restriction functions for geometry and possible a Z span and a time period
  * N.B. In the current PostGIS version there is no true ST_Intersection
  * function for geography, it is implemented as ST_DWithin with tolerance 0
@@ -746,7 +103,7 @@ tpoint_make_simple(const Temporal *temp, int *count)
 
 /**
  * @brief Restrict a temporal point instant to (the complement of) a
- * spatiotemporal box (iterator function).
+ * spatiotemporal box (iterator function)
  * @pre The arguments have the same SRID, the geometry is 2D and is not empty.
  * This is verified in #tpoint_restrict_geom_time
  */
@@ -755,8 +112,7 @@ tpointinst_restrict_geom_time_iter(const TInstant *inst, const GSERIALIZED *gs,
   const Span *zspan, const Span *period, bool atfunc)
 {
   /* Restrict to the T dimension */
-  if (period && ! contains_span_value(period, TimestampTzGetDatum(inst->t),
-      T_TIMESTAMPTZ))
+  if (period && ! contains_span_value(period, TimestampTzGetDatum(inst->t)))
     return ! atfunc;
 
   /* Restrict to the Z dimension */
@@ -764,7 +120,7 @@ tpointinst_restrict_geom_time_iter(const TInstant *inst, const GSERIALIZED *gs,
   if (zspan)
   {
     const POINT3DZ *p = DATUM_POINT3DZ_P(value);
-    if (! contains_span_value(zspan, Float8GetDatum(p->z), T_FLOAT8))
+    if (! contains_span_value(zspan, Float8GetDatum(p->z)))
       return ! atfunc;
   }
 
@@ -777,9 +133,9 @@ tpointinst_restrict_geom_time_iter(const TInstant *inst, const GSERIALIZED *gs,
 }
 
 /**
- * @ingroup libmeos_internal_temporal_restrict
+ * @ingroup meos_internal_temporal_restrict
  * @brief Restrict a temporal point instant to (the complement of) a geometry
- * and possibly a Z span and a timestamptz span.
+ * and possibly a Z span and a timestamptz span
  * @param[in] inst Temporal point
  * @param[in] gs Geometry
  * @param[in] zspan Span of values to restrict the Z dimension
@@ -790,8 +146,7 @@ TInstant *
 tpointinst_restrict_geom_time(const TInstant *inst, const GSERIALIZED *gs,
   const Span *zspan, const Span *period, bool atfunc)
 {
-  assert(inst); assert(gs);
-  assert(tgeo_type(inst->temptype));
+  assert(inst); assert(gs); assert(tgeo_type(inst->temptype));
   if (tpointinst_restrict_geom_time_iter(inst, gs, zspan, period, atfunc))
     return tinstant_copy(inst);
   return NULL;
@@ -799,7 +154,7 @@ tpointinst_restrict_geom_time(const TInstant *inst, const GSERIALIZED *gs,
 
 /**
  * @brief Restrict a temporal point discrete sequence to (the complement of) a
- * geometry and possibly a Z span and a timestamptz span.
+ * geometry and possibly a Z span and a timestamptz span
  * @param[in] seq Temporal point
  * @param[in] gs Geometry
  * @param[in] zspan Span of values to restrict the Z dimension
@@ -834,7 +189,7 @@ tpointdiscseq_restrict_geom_time(const TSequence *seq, const GSERIALIZED *gs,
 
 /**
  * @brief Restrict a temporal sequence point with step interpolation to a
- * geometry and possibly a Z span and a timestamptz span.
+ * geometry and possibly a Z span and a timestamptz span
  * @param[in] seq Temporal point
  * @param[in] gs Geometry
  * @param[in] zspan Span of values to restrict the Z dimension
@@ -945,8 +300,7 @@ tpointseq_step_restrict_geom_time(const TSequence *seq,
   /* If "minus" restriction, compute the complement wrt time */
   SpanSet *ss = tsequenceset_time(result_at);
   TSequenceSet *result = tcontseq_restrict_tstzspanset(seq, ss, atfunc);
-  pfree(ss);
-  pfree(result_at);
+  pfree(ss); pfree(result_at);
   return result;
 }
 
@@ -954,16 +308,15 @@ tpointseq_step_restrict_geom_time(const TSequence *seq,
 
 /**
  * @brief Return the timestamp at which a segment of a temporal point takes a
- * base value (iterator function).
- *
- * To take into account roundoff errors, the function considers that two
- * two values are equal even if their coordinates may differ by MEOS_EPSILON.
+ * base value (iterator function)
+ * @details To take into account roundoff errors, the function considers that
+ * two values are equal even if their coordinates may differ by @p MEOS_EPSILON.
  * @param[in] inst1,inst2 Temporal values
  * @param[in] value Base value
  * @param[out] t Timestamp
  * @result Return true if the point is found in the temporal point
  * @pre The segment is not constant and has linear interpolation
- * @note The resulting timestamp may be at an exclusive bound
+ * @note The resulting timestamptz may be at an exclusive bound
  */
 static bool
 tpointsegm_timestamp_at_value1_iter(const TInstant *inst1,
@@ -996,14 +349,12 @@ tpointsegm_timestamp_at_value1_iter(const TInstant *inst1,
 /**
  * @brief Return the timestamp at which a temporal point sequence is equal to a
  * point
- *
- * This function is called by the #tpointseq_interperiods function while
- * computing atGeometry to find the timestamp at which an intersection point
- * found by PostGIS is located. This function differs from function
+ * @details This function is called by the #tpointseq_interperiods function 
+ * while computing atGeometry to find the timestamp at which an intersection 
+ * point found by PostGIS is located. This function differs from function
  * #tpointsegm_intersection_value in particular since the latter is used for
  * finding crossings during synchronization and thus it is required that the
  * timestamp in strictly between the timestamps of a segment.
- *
  * @param[in] seq Temporal point sequence
  * @param[in] value Base value
  * @param[out] t Timestamp
@@ -1164,25 +515,25 @@ tpointseq_interperiods(const TSequence *seq, GSERIALIZED *gsinter, int *count)
 
   int newcount;
   result = spanarr_normalize(periods, npers, ORDERED_NO, &newcount);
-  pfree(periods);
   *count = newcount;
+  pfree(periods);
   return result;
 }
 
 /**
  * @brief Restrict a temporal sequence point with linear interpolation to a
  * geometry
- * @pre The arguments have the same SRID, the geometry is 2D and is not empty.
- * This is verified in #tpoint_restrict_geom_time
- * @note Instantaneous sequences must be managed since this function is called
- * after restricting to the time dimension
- * @note The computation is based on the PostGIS function ST_Intersection
+ * @details The computation is based on the PostGIS function @p ST_Intersection
  * which delegates the computation to GEOS. The geometry must be in 2D.
  * When computing the intersection the Z values of the temporal point must
  * be dropped since the Z values "are copied, averaged or interpolated"
  * as stated in https://postgis.net/docs/ST_Intersection.html
  * After this computation, the Z values are recovered by restricting the
  * original sequence to the time span of the 2D result.
+ * @note Instantaneous sequences must be managed since this function is called
+ * after restricting to the time dimension
+ * @pre The arguments have the same SRID, the geometry is 2D and is not empty.
+ * This is verified in #tpoint_restrict_geom_time
  */
 static TSequenceSet *
 tpointseq_linear_at_geom(const TSequence *seq, const GSERIALIZED *gs)
@@ -1193,8 +544,8 @@ tpointseq_linear_at_geom(const TSequence *seq, const GSERIALIZED *gs)
   /* Instantaneous sequence */
   if (seq->count == 1)
   {
-    const TInstant *inst = TSEQUENCE_INST_N(seq, 0);
-    if (tpointinst_restrict_geom_time_iter(inst, gs, NULL, NULL, REST_AT))
+    if (tpointinst_restrict_geom_time_iter(TSEQUENCE_INST_N(seq, 0), gs, NULL,
+        NULL, REST_AT))
       return tsequence_to_tsequenceset(seq);
     return NULL;
   }
@@ -1295,21 +646,21 @@ tpointseq_linear_at_geom(const TSequence *seq, const GSERIALIZED *gs)
 
 /**
  * @brief Restrict a temporal sequence point with linear interpolation to
- * (the complement of) a geometry and possibly a Z span and a timestamptz span.
+ * (the complement of) a geometry and possibly a Z span and a timestamptz span
+ * @details The function first filters the temporal point wrt the time 
+ * dimension to reduce the number of instants before computing the restriction 
+ * to the geometry, which is an expensive operation. Notice that we need to 
+ * filter wrt the Z dimension after that since while doing this, the subtype of
+ * the temporal point may change from a sequence to a sequence set.
  * @param[in] seq Temporal point
  * @param[in] gs Geometry
  * @param[in] zspan Span of values to restrict the Z dimension
  * @param[in] period Period to restrict the T dimension
  * @param[in] atfunc True if the restriction is at, false for minus
- * @pre Instantaneous sequences have been managed in the calling function
  * @note The function computes the "at" restriction on all dimensions. Then,
  * for the "minus" restriction, it computes the complement of the "at"
  * restriction with respect to the time dimension.
- * @note The function first filters the temporal point wrt the time dimension
- * to reduce the number of instants before computing the restriction to the
- * geometry, which is an expensive operation. Notice that we need to filter wrt
- * the Z dimension after that since while doing this, the subtype of the
- * temporal point may change from a sequence to a sequence set.
+ * @pre Instantaneous sequences have been managed in the calling function
  */
 TSequenceSet *
 tpointseq_linear_restrict_geom_time(const TSequence *seq,
@@ -1376,15 +727,14 @@ tpointseq_linear_restrict_geom_time(const TSequence *seq,
 
   SpanSet *ss = tsequenceset_time(result_at);
   TSequenceSet *result = tcontseq_restrict_tstzspanset(seq, ss, atfunc);
-  pfree(ss);
-  pfree(result_at);
+  pfree(ss); pfree(result_at);
   return result;
 }
 
 /**
- * @ingroup libmeos_internal_temporal_restrict
+ * @ingroup meos_internal_temporal_restrict
  * @brief Restrict a temporal point sequence to (the complement of) a geometry
- * and possibly a Z span and a timestamptz span.
+ * and possibly a Z span and a timestamptz span
  * @param[in] seq Temporal point
  * @param[in] gs Geometry
  * @param[in] zspan Span of values to restrict the Z dimension
@@ -1395,15 +745,14 @@ Temporal *
 tpointseq_restrict_geom_time(const TSequence *seq, const GSERIALIZED *gs,
   const Span *zspan, const Span *period, bool atfunc)
 {
-  assert(seq); assert(gs);
-  assert(tgeo_type(seq->temptype));
+  assert(seq); assert(gs); assert(tgeo_type(seq->temptype));
   interpType interp = MEOS_FLAGS_GET_INTERP(seq->flags);
 
   /* Instantaneous sequence */
   if (seq->count == 1)
   {
-    const TInstant *inst = TSEQUENCE_INST_N(seq, 0);
-    if (tpointinst_restrict_geom_time_iter(inst, gs, zspan, period, atfunc))
+    if (tpointinst_restrict_geom_time_iter(TSEQUENCE_INST_N(seq, 0), gs, zspan,
+        period, atfunc))
       return (interp == DISCRETE) ? (Temporal *) tsequence_copy(seq) :
         (Temporal *) tsequence_to_tsequenceset(seq);
     return NULL;
@@ -1422,9 +771,9 @@ tpointseq_restrict_geom_time(const TSequence *seq, const GSERIALIZED *gs,
 }
 
 /**
- * @ingroup libmeos_internal_temporal_restrict
+ * @ingroup meos_internal_temporal_restrict
  * @brief Restrict a temporal point sequence set to (the complement of) a
- * geometry and possibly a Z span and a timestamptz span.
+ * geometry and possibly a Z span and a timestamptz span
  * @param[in] ss Temporal point
  * @param[in] gs Geometry
  * @param[in] zspan Span of values to restrict the Z dimension
@@ -1435,8 +784,7 @@ TSequenceSet *
 tpointseqset_restrict_geom_time(const TSequenceSet *ss, const GSERIALIZED *gs,
   const Span *zspan, const Span *period, bool atfunc)
 {
-  assert(ss); assert(gs);
-  assert(tgeo_type(ss->temptype));
+  assert(ss); assert(gs); assert(tgeo_type(ss->temptype));
   const TSequence *seq;
   TSequenceSet *result = NULL;
 
@@ -1482,9 +830,9 @@ tpointseqset_restrict_geom_time(const TSequenceSet *ss, const GSERIALIZED *gs,
 }
 
 /**
- * @ingroup libmeos_internal_temporal_restrict
+ * @ingroup meos_internal_temporal_restrict
  * @brief Restrict a temporal point to (the complement of) a geometry and
- * possibly a Z span and a timestamptz span.
+ * possibly a Z span and a timestamptz span
  * @param[in] temp Temporal point
  * @param[in] gs Geometry
  * @param[in] zspan Span of values to restrict the Z dimension
@@ -1495,8 +843,7 @@ Temporal *
 tpoint_restrict_geom_time(const Temporal *temp, const GSERIALIZED *gs,
   const Span *zspan, const Span *period, bool atfunc)
 {
-  assert(temp); assert(gs);
-  assert(tgeo_type(temp->temptype));
+  assert(temp); assert(gs); assert(tgeo_type(temp->temptype));
   if (gserialized_is_empty(gs))
     return atfunc ? NULL : temporal_cp(temp);
   /* Ensure validity of the arguments */
@@ -1525,24 +872,25 @@ tpoint_restrict_geom_time(const Temporal *temp, const GSERIALIZED *gs,
   if (! overlaps)
     return atfunc ? NULL : temporal_cp(temp);
 
-  Temporal *result;
   assert(temptype_subtype(temp->subtype));
-  if (temp->subtype == TINSTANT)
-    result = (Temporal *) tpointinst_restrict_geom_time((TInstant *) temp,
-      gs, zspan, period, atfunc);
-  else if (temp->subtype == TSEQUENCE)
-    result = tpointseq_restrict_geom_time((TSequence *) temp,
-      gs, zspan, period, atfunc);
-  else /* temp->subtype == TSEQUENCESET */
-    result = (Temporal *) tpointseqset_restrict_geom_time((TSequenceSet *)
-      temp, gs, zspan, period, atfunc);
-  return result;
+  switch (temp->subtype)
+  {
+    case TINSTANT:
+      return (Temporal *) tpointinst_restrict_geom_time((TInstant *) temp,
+        gs, zspan, period, atfunc);
+    case TSEQUENCE:
+      return tpointseq_restrict_geom_time((TSequence *) temp,
+        gs, zspan, period, atfunc);
+    default: /* TSEQUENCESET */
+      return (Temporal *) tpointseqset_restrict_geom_time((TSequenceSet *)
+        temp, gs, zspan, period, atfunc);
+  }
 }
 
 #if MEOS
 /**
- * @ingroup libmeos_temporal_restrict
- * @brief Restrict a temporal point to a geometry.
+ * @ingroup meos_temporal_restrict
+ * @brief Restrict a temporal point to a geometry
  * @param[in] temp Temporal point
  * @param[in] gs Geometry
  * @param[in] zspan Span of values to restrict the Z dimension
@@ -1560,8 +908,8 @@ tpoint_at_geom_time(const Temporal *temp, const GSERIALIZED *gs,
 }
 
 /**
- * @ingroup libmeos_temporal_restrict
- * @brief Restrict a temporal point to (the complement of) a geometry.
+ * @ingroup meos_temporal_restrict
+ * @brief Restrict a temporal point to (the complement of) a geometry
  * @param[in] temp Temporal point
  * @param[in] gs Geometry
  * @param[in] zspan Span of values to restrict the Z dimension
@@ -1692,21 +1040,21 @@ clipt(double p, double q, double *t0, double *t1)
 }
 
 /**
- * @brief Clip a segment define by p1 = (x1, y1, z1) and p2 = (x2, y2, z2)
- * using the Liang-Barsky algorithm
- * https://www.researchgate.net/publication/255657434_Some_Improvements_to_a_Parametric_Line_Clipping_Algorithm
+ * @brief Clip a line segment using the Liang-Barsky algorithm
  * @param[in] point1,point2 Input points
  * @param[in] box Bounding box
  * @param[in] hasz Has Z dimension?
- * @param[in] border_inc True when the box contains the upper border
+ * @param[in] border_inc True when the box contains the upper border, otherwise
+ * the upper border is assumed as outside of the box.
  * @param[out] point3,point4 Output points
  * @param[out] p3_inc,p4_inc Are the points included or not in the box?
+ * These are only written/returned when @p border_inc is true
  * @result True if the line segment defined by p1,p2 intersects the bounding
- * box, false otherwise
- * @note When border_inc is false, the max border is counted as outside of the box
- * @note p3_inc and p4_inc are only written/returned when border_inc is true
+ * box, false otherwise.
  * @note It is possible to mix 2D/3D geometries, the Z dimension is only
  * considered if both the temporal point and the box have Z dimension
+ * @see The Liang-Barsky algorithm is explained in
+ * https://www.researchgate.net/publication/255657434_Some_Improvements_to_a_Parametric_Line_Clipping_Algorithm
  */
 static bool
 liangBarskyClip(GSERIALIZED *point1, GSERIALIZED *point2, const STBox *box,
@@ -1812,7 +1160,7 @@ liangBarskyClip(GSERIALIZED *point1, GSERIALIZED *point2, const STBox *box,
 
 /**
  * @brief Restrict a temporal point instant to (the complement of) a
- * spatiotemporal box (iterator function).
+ * spatiotemporal box (iterator function)
  * @pre The arguments have the same SRID. This is verified in
  * #tpoint_restrict_stbox
  */
@@ -1824,8 +1172,7 @@ tpointinst_restrict_stbox_iter(const TInstant *inst, const STBox *box,
   bool hast = MEOS_FLAGS_GET_T(box->flags);
 
   /* Restrict to the T dimension */
-  if (hast && ! contains_span_value(&box->period, DatumGetTimestampTz(inst->t),
-      T_TIMESTAMPTZ))
+  if (hast && ! contains_span_value(&box->period, DatumGetTimestampTz(inst->t)))
     return ! atfunc;
 
   /* Restrict to the XY(Z) dimension */
@@ -1858,9 +1205,9 @@ tpointinst_restrict_stbox_iter(const TInstant *inst, const STBox *box,
 }
 
 /**
- * @ingroup libmeos_internal_temporal_restrict
+ * @ingroup meos_internal_temporal_restrict
  * @brief Restrict a temporal point instant to (the complement of) a
- * spatiotemporal box.
+ * spatiotemporal box
  * @param[in] inst Temporal instant point
  * @param[in] box Spatiotemporal box
  * @param[in] border_inc True when the box contains the upper border
@@ -1873,8 +1220,7 @@ TInstant *
 tpointinst_restrict_stbox(const TInstant *inst, const STBox *box,
   bool border_inc, bool atfunc)
 {
-  assert(inst); assert(box);
-  assert(tgeo_type(inst->temptype));
+  assert(inst); assert(box); assert(tgeo_type(inst->temptype));
   if (tpointinst_restrict_stbox_iter(inst, box, border_inc, atfunc))
     return tinstant_copy(inst);
   return NULL;
@@ -1882,7 +1228,7 @@ tpointinst_restrict_stbox(const TInstant *inst, const STBox *box,
 
 /**
  * @brief Restrict a temporal point discrete sequence to (the complement of) a
- * spatiotemporal box.
+ * spatiotemporal box
  * @param[in] seq Temporal discrete sequence point
  * @param[in] box Spatiotemporal box
  * @param[in] border_inc True when the box contains the upper border
@@ -1916,7 +1262,7 @@ tpointdiscseq_restrict_stbox(const TSequence *seq, const STBox *box,
 
 /**
  * @brief Restrict a temporal sequence point with step interpolation to a
- * spatiotemporal box.
+ * spatiotemporal box
  * @param[in] seq Temporal point
  * @param[in] box Spatiotemporal box
  * @param[in] border_inc True when the box contains the upper border
@@ -2027,8 +1373,7 @@ tpointseq_step_restrict_stbox(const TSequence *seq, const STBox *box,
   /* If "minus" restriction, compute the complement wrt time */
   SpanSet *ss = tsequenceset_time(result_at);
   TSequenceSet *result = tcontseq_restrict_tstzspanset(seq, ss, atfunc);
-  pfree(ss);
-  pfree(result_at);
+  pfree(ss); pfree(result_at);
   return result;
 }
 
@@ -2052,8 +1397,8 @@ tpointseq_linear_at_stbox_xyz(const TSequence *seq, const STBox *box,
   /* Instantaneous sequence */
   if (seq->count == 1)
   {
-    const TInstant *inst = TSEQUENCE_INST_N(seq, 0);
-    if (tpointinst_restrict_stbox_iter(inst, box, border_inc, REST_AT))
+    if (tpointinst_restrict_stbox_iter(TSEQUENCE_INST_N(seq, 0), box,
+        border_inc, REST_AT))
       return tsequence_to_tsequenceset(seq);
     return NULL;
   }
@@ -2217,20 +1562,20 @@ tpointseq_linear_at_stbox_xyz(const TSequence *seq, const STBox *box,
 
 /**
  * @brief Restrict a temporal point sequence to (the complement of) a
- * spatiotemporal box.
+ * spatiotemporal box
+ * @details The function computes the "at" restriction on all dimensions. Then,
+ * for the "minus" restriction, it computes the complement of the "at"
+ * restriction with respect to the time dimension.
+ * The function first filters the temporal point wrt the time dimension
+ * to reduce the number of instants before computing the restriction to the
+ * spatial dimension.
  * @param[in] seq Temporal sequence point
  * @param[in] box Spatiotemporal box
  * @param[in] border_inc True when the box contains the upper border
  * @param[in] atfunc True if the restriction is at, false for minus
  * @pre The box has X dimension and the arguments have the same SRID.
  * This is verified in #tpoint_restrict_stbox
- * @pre Instantaneous sequences have been managed in the calling function
- * @note The function computes the "at" restriction on all dimensions. Then,
- * for the "minus" restriction, it computes the complement of the "at"
- * restriction with respect to the time dimension.
- * @note The function first filters the temporal point wrt the time dimension
- * to reduce the number of instants before computing the restriction to the
- * spatial dimension.
+ * @note Instantaneous sequences have been managed in the calling function
  */
 TSequenceSet *
 tpointseq_linear_restrict_stbox(const TSequence *seq, const STBox *box,
@@ -2265,15 +1610,14 @@ tpointseq_linear_restrict_stbox(const TSequence *seq, const STBox *box,
 
   SpanSet *ss = tsequenceset_time(result_at);
   TSequenceSet *result = tcontseq_restrict_tstzspanset(seq, ss, atfunc);
-  pfree(ss);
-  pfree(result_at);
+  pfree(ss); pfree(result_at);
   return result;
 }
 
 /**
- * @ingroup libmeos_internal_temporal_restrict
+ * @ingroup meos_internal_temporal_restrict
  * @brief Restrict a temporal point sequence to (the complement of) a
- * spatiotemporal box.
+ * spatiotemporal box
  * @param[in] seq Temporal sequence point
  * @param[in] box Spatiotemporal box
  * @param[in] border_inc True when the box contains the upper border
@@ -2286,15 +1630,14 @@ Temporal *
 tpointseq_restrict_stbox(const TSequence *seq, const STBox *box, bool border_inc,
   bool atfunc)
 {
-  assert(seq); assert(box);
-  assert(tgeo_type(seq->temptype));
+  assert(seq); assert(box); assert(tgeo_type(seq->temptype));
   interpType interp = MEOS_FLAGS_GET_INTERP(seq->flags);
 
   /* Instantaneous sequence */
   if (seq->count == 1)
   {
-    const TInstant *inst = TSEQUENCE_INST_N(seq, 0);
-    if (tpointinst_restrict_stbox_iter(inst, box, border_inc, atfunc))
+    if (tpointinst_restrict_stbox_iter(TSEQUENCE_INST_N(seq, 0), box,
+        border_inc, atfunc))
       return (interp == DISCRETE) ? (Temporal *) tsequence_copy(seq) :
         (Temporal *) tsequence_to_tsequenceset(seq);
     return NULL;
@@ -2313,9 +1656,9 @@ tpointseq_restrict_stbox(const TSequence *seq, const STBox *box, bool border_inc
 }
 
 /**
- * @ingroup libmeos_internal_temporal_restrict
+ * @ingroup meos_internal_temporal_restrict
  * @brief Restrict a temporal point sequence set to (the complement of) a
- * spatiotemporal box.
+ * spatiotemporal box
  * @param[in] ss Temporal sequence set point
  * @param[in] box Spatiotemporal box
  * @param[in] border_inc True when the box contains the upper border
@@ -2328,8 +1671,7 @@ TSequenceSet *
 tpointseqset_restrict_stbox(const TSequenceSet *ss, const STBox *box,
   bool border_inc, bool atfunc)
 {
-  assert(ss); assert(box);
-  assert(tgeo_type(ss->temptype));
+  assert(ss); assert(box); assert(tgeo_type(ss->temptype));
   const TSequence *seq;
   TSequenceSet *result = NULL;
 
@@ -2372,7 +1714,7 @@ tpointseqset_restrict_stbox(const TSequenceSet *ss, const STBox *box,
 }
 
 /**
- * @ingroup libmeos_internal_temporal_restrict
+ * @ingroup meos_internal_temporal_restrict
  * @brief Restrict a temporal point to (the complement of) a spatiotemporal box
  * @param[in] temp Temporal point
  * @param[in] box Spatiotemporal box
@@ -2385,8 +1727,7 @@ Temporal *
 tpoint_restrict_stbox(const Temporal *temp, const STBox *box, bool border_inc,
   bool atfunc)
 {
-  assert(temp); assert(box);
-  assert(tgeo_type(temp->temptype));
+  assert(temp); assert(box); assert(tgeo_type(temp->temptype));
   /* At least one of MEOS_FLAGS_GET_X and MEOS_FLAGS_GET_T is true */
   bool hasx = MEOS_FLAGS_GET_X(box->flags);
   bool hast = MEOS_FLAGS_GET_T(box->flags);
@@ -2413,24 +1754,25 @@ tpoint_restrict_stbox(const Temporal *temp, const STBox *box, bool border_inc,
   if (! overlaps)
     return atfunc ? NULL : temporal_cp(temp);
 
-  Temporal *result;
   assert(temptype_subtype(temp->subtype));
-  if (temp->subtype == TINSTANT)
-    result = (Temporal *) tpointinst_restrict_stbox((TInstant *) temp,
-      box, border_inc, atfunc);
-  else if (temp->subtype == TSEQUENCE)
-    result = (Temporal *) tpointseq_restrict_stbox((TSequence *) temp,
-      box, border_inc, atfunc);
-  else /* temp->subtype == TSEQUENCESET */
-    result = (Temporal *) tpointseqset_restrict_stbox((TSequenceSet *) temp,
-      box, border_inc, atfunc);
-  return result;
+  switch (temp->subtype)
+  {
+    case TINSTANT:
+      return (Temporal *) tpointinst_restrict_stbox((TInstant *) temp,
+        box, border_inc, atfunc);
+    case TSEQUENCE:
+      return (Temporal *) tpointseq_restrict_stbox((TSequence *) temp,
+        box, border_inc, atfunc);
+    default: /* TSEQUENCESET */
+      return (Temporal *) tpointseqset_restrict_stbox((TSequenceSet *) temp,
+        box, border_inc, atfunc);
+  }
 }
 
 #if MEOS
 /**
- * @ingroup libmeos_temporal_restrict
- * @brief Restrict a temporal point to a spatiotemporal box.
+ * @ingroup meos_temporal_restrict
+ * @brief Restrict a temporal point to a spatiotemporal box
  * @param[in] temp Temporal point
  * @param[in] box Spatiotemporal box
  * @param[in] border_inc True when the box contains the upper border
@@ -2442,13 +1784,12 @@ tpoint_at_stbox(const Temporal *temp, const STBox *box, bool border_inc)
   /* Ensure validity of the arguments */
   if (! ensure_valid_tpoint_box(temp, box))
     return NULL;
-  Temporal *result = tpoint_restrict_stbox(temp, box, border_inc, REST_AT);
-  return result;
+  return tpoint_restrict_stbox(temp, box, border_inc, REST_AT);
 }
 
 /**
- * @ingroup libmeos_temporal_restrict
- * @brief Restrict a temporal point to the complement of a spatiotemporal box.
+ * @ingroup meos_temporal_restrict
+ * @brief Restrict a temporal point to the complement of a spatiotemporal box
  * @param[in] temp Temporal point
  * @param[in] box Spatiotemporal box
  * @param[in] border_inc True when the box contains the upper border
@@ -2460,8 +1801,7 @@ tpoint_minus_stbox(const Temporal *temp, const STBox *box, bool border_inc)
   /* Ensure validity of the arguments */
   if (! ensure_valid_tpoint_box(temp, box))
     return NULL;
-  Temporal *result = tpoint_restrict_stbox(temp, box, border_inc, REST_MINUS);
-  return result;
+  return tpoint_restrict_stbox(temp, box, border_inc, REST_MINUS);
 }
 #endif /* MEOS */
 

@@ -29,12 +29,11 @@
 
 /**
  * @file
- * @brief MobilityDB functions gserialized_func(...) corresponding to external
- * PostGIS functions xxx_func(PG_FUNCTION_ARGS). This avoids bypassing the
- * function manager fmgr.c.
+ * @brief MobilityDB functions corresponding to external PostGIS functions
+ * @note This avoids bypassing the function manager in @p fmgr.c
  */
 
-#include "point/pgis_call.h"
+#include "point/pgis_types.h"
 
 /* C */
 #include <assert.h>
@@ -73,7 +72,7 @@ void srid_check_latlong(int32_t srid);
 #endif
 
 GSERIALIZED *
-gserialized_geography_from_lwgeom(LWGEOM *geom, int32 geog_typmod);
+geography_from_lwgeom(LWGEOM *geom, int32 geog_typmod);
 
 /*****************************************************************************
  * Functions adapted from lwgeom_box.c
@@ -81,9 +80,9 @@ gserialized_geography_from_lwgeom(LWGEOM *geom, int32 geog_typmod);
 
 /**
  * @brief Create a geometry from a BOX2D
- * @note PostGIS function: BOX2D_to_LWGEOM(PG_FUNCTION_ARGS)
- * @note With respect to the original PostGIS function we also set the SRID
- * which is passed as an additional argument
+ * @note PostGIS function: @p BOX2D_to_LWGEOM(PG_FUNCTION_ARGS). With respect
+ * to the original function, we also set the SRID which is passed as an
+ * additional argument
  */
 LWGEOM *
 box2d_to_lwgeom(GBOX *box, int srid)
@@ -157,8 +156,8 @@ box2d_to_lwgeom(GBOX *box, int srid)
  *****************************************************************************/
 
 /**
- * @brief Create a geometry from a BOX3D
- * @note PostGIS function: BOX3D_to_LWGEOM(PG_FUNCTION_ARGS)
+ * @brief Create a geometry from a @p BOX3D
+ * @note PostGIS function: @p BOX3D_to_LWGEOM(PG_FUNCTION_ARGS)
  */
 LWGEOM *
 box3d_to_lwgeom(BOX3D *box)
@@ -425,10 +424,10 @@ lwgeom_boundary(LWGEOM *lwgeom)
 
 /**
  * @brief Return the boundary of a geometry
- * @note PostGIS function: boundary(PG_FUNCTION_ARGS)
+ * @note PostGIS function: @p boundary(PG_FUNCTION_ARGS)
  */
 GSERIALIZED *
-gserialized_boundary(const GSERIALIZED *gs)
+geometry_boundary(const GSERIALIZED *gs)
 {
   /* Empty.Boundary() == Empty, but of other dimension, so can't shortcut */
 
@@ -450,10 +449,10 @@ gserialized_boundary(const GSERIALIZED *gs)
 
 /**
  * @brief Return the shortest 2d line between two geometries
- * @note PostGIS function: LWGEOM_shortestline2d(PG_FUNCTION_ARGS)
+ * @note PostGIS function: @p LWGEOM_shortestline2d(PG_FUNCTION_ARGS)
  */
 GSERIALIZED *
-gserialized_shortestline2d(const GSERIALIZED *gs1, const GSERIALIZED *gs2)
+geo_shortestline2d(const GSERIALIZED *gs1, const GSERIALIZED *gs2)
 {
   assert(gserialized_get_srid(gs1) == gserialized_get_srid(gs2));
 
@@ -471,11 +470,11 @@ gserialized_shortestline2d(const GSERIALIZED *gs1, const GSERIALIZED *gs2)
 }
 
 /**
- * @brief Return the shortest line between two geometries in 3D
- * @note PostGIS function: LWGEOM_shortestline3d(PG_FUNCTION_ARGS)
+ * @brief Return the shortest line between two 3D geometries
+ * @note PostGIS function: @p LWGEOM_shortestline3d(PG_FUNCTION_ARGS)
  */
 GSERIALIZED *
-gserialized_shortestline3d(const GSERIALIZED *gs1, const GSERIALIZED *gs2)
+geometry_shortestline3d(const GSERIALIZED *gs1, const GSERIALIZED *gs2)
 {
   assert(gserialized_get_srid(gs1) == gserialized_get_srid(gs2));
 
@@ -494,10 +493,10 @@ gserialized_shortestline3d(const GSERIALIZED *gs1, const GSERIALIZED *gs2)
 
 /**
  * @brief Return the distance between two geometries
- * @note PostGIS function: ST_Distance(PG_FUNCTION_ARGS)
+ * @note PostGIS function: @p ST_Distance(PG_FUNCTION_ARGS)
  */
 double
-gserialized_distance(const GSERIALIZED *gs1, const GSERIALIZED *gs2)
+geo_distance(const GSERIALIZED *gs1, const GSERIALIZED *gs2)
 {
   assert(gserialized_get_srid(gs1) == gserialized_get_srid(gs2));
 
@@ -514,11 +513,11 @@ gserialized_distance(const GSERIALIZED *gs1, const GSERIALIZED *gs2)
 }
 
 /**
- * @brief Return the distance between two geometries
- * @note PostGIS function: ST_3DDistance(PG_FUNCTION_ARGS)
+ * @brief Return the 3D distance between two geometries
+ * @note PostGIS function: @p ST_3DDistance(PG_FUNCTION_ARGS)
  */
 double
-gserialized_3Ddistance(const GSERIALIZED *gs1, const GSERIALIZED *gs2)
+geometry_3Ddistance(const GSERIALIZED *gs1, const GSERIALIZED *gs2)
 {
   assert(gserialized_get_srid(gs1) == gserialized_get_srid(gs2));
 
@@ -536,10 +535,10 @@ gserialized_3Ddistance(const GSERIALIZED *gs1, const GSERIALIZED *gs2)
 
 /**
  * @brief Return true if the 3D geometries intersect
- * @note PostGIS function: ST_3DIntersects(PG_FUNCTION_ARGS)
+ * @note PostGIS function: @p ST_3DIntersects(PG_FUNCTION_ARGS)
  */
 bool
-gserialized_3Dintersects(const GSERIALIZED *gs1, const GSERIALIZED *gs2)
+geometry_3Dintersects(const GSERIALIZED *gs1, const GSERIALIZED *gs2)
 {
   assert(gserialized_get_srid(gs1) == gserialized_get_srid(gs2));
 
@@ -552,11 +551,11 @@ gserialized_3Dintersects(const GSERIALIZED *gs1, const GSERIALIZED *gs2)
 }
 
 /**
- * @brief Return true if the geometries are within a distance
- * @note PostGIS function: LWGEOM_dwithin(PG_FUNCTION_ARGS)
+ * @brief Return true if two geometries are within a distance
+ * @note PostGIS function: @p LWGEOM_dwithin(PG_FUNCTION_ARGS)
  */
 bool
-gserialized_dwithin(const GSERIALIZED *gs1, const GSERIALIZED *gs2,
+geometry_dwithin2d(const GSERIALIZED *gs1, const GSERIALIZED *gs2,
   double tolerance)
 {
   if (! ensure_positive_datum(Float8GetDatum(tolerance), T_FLOAT8) ||
@@ -573,11 +572,11 @@ gserialized_dwithin(const GSERIALIZED *gs1, const GSERIALIZED *gs2,
 }
 
 /**
- * @brief Return true if the geometries are within a distance
- * @note PostGIS function: LWGEOM_dwithin3d(PG_FUNCTION_ARGS)
+ * @brief Return true if two geometries are within a distance
+ * @note PostGIS function: @p LWGEOM_dwithin3d(PG_FUNCTION_ARGS)
  */
 bool
-gserialized_dwithin3d(const GSERIALIZED *gs1, const GSERIALIZED *gs2,
+geometry_dwithin3d(const GSERIALIZED *gs1, const GSERIALIZED *gs2,
   double tolerance)
 {
   if (! ensure_positive_datum(Float8GetDatum(tolerance), T_FLOAT8) ||
@@ -594,10 +593,10 @@ gserialized_dwithin3d(const GSERIALIZED *gs1, const GSERIALIZED *gs2,
 
 /**
  * @brief  Reverse vertex order of geometry
- * @note PostGIS function: LWGEOM_reverse(PG_FUNCTION_ARGS)
+ * @note PostGIS function: @p LWGEOM_reverse(PG_FUNCTION_ARGS)
  */
 GSERIALIZED *
-gserialized_reverse(const GSERIALIZED *gs)
+geo_reverse(const GSERIALIZED *gs)
 {
   LWGEOM *geom = lwgeom_from_gserialized(gs);
   lwgeom_reverse_in_place(geom);
@@ -688,7 +687,7 @@ gserialized_is_poly(const GSERIALIZED* gs)
 /**
  * @brief Return -1, 0, or 1 depending on whether a (multi)point is completely
  * outside, on the boundary, or completely inside a (multi)polygon
- * @note This function is based PostGIS function pip_short_circuit bypassing
+ * @note This function is based PostGIS function @p pip_short_circuit bypassing
  * the cache
  */
 static int
@@ -781,7 +780,7 @@ GEOS2POSTGIS(GEOSGeom geom, char want3d)
 }
 
 /**
- * @brief Transform the GSERIALIZED geometries into GEOSGeometry and
+ * @brief Transform two @p GSERIALIZED geometries into @p GEOSGeometry and
  * call the GEOS function passed as argument
  */
 static char
@@ -819,15 +818,15 @@ meos_call_geos2(const GSERIALIZED *gs1, const GSERIALIZED *gs2,
 }
 
 /**
- * @brief Return true if the geometries intersect or the first contains
+ * @brief Return true if two geometries intersect or the first contains
  * the other, where the function called depend on the third argument
  * @param[in] gs1,gs2 Geometries
  * @param[in] rel Spatial relationship
- * @note PostGIS functions: ST_Intersects(PG_FUNCTION_ARGS),
- * contains(PG_FUNCTION_ARGS), touches(PG_FUNCTION_ARGS)
+ * @note PostGIS functions: @p ST_Intersects(PG_FUNCTION_ARGS),
+ * @p contains(PG_FUNCTION_ARGS), @p touches(PG_FUNCTION_ARGS)
  */
 bool
-gserialized_spatialrel(const GSERIALIZED *gs1, const GSERIALIZED *gs2,
+geometry_spatialrel(const GSERIALIZED *gs1, const GSERIALIZED *gs2,
   spatialRel rel)
 {
   assert(gserialized_get_srid(gs1) == gserialized_get_srid(gs2));
@@ -879,11 +878,12 @@ gserialized_spatialrel(const GSERIALIZED *gs1, const GSERIALIZED *gs2,
 }
 
 /**
- * @brief Return true if the 3D geometries intersect
- * @note PostGIS function: relate_pattern(PG_FUNCTION_ARGS)
+ * @brief Return true if two geometries satisfy a spatial relationship given
+ * by a pattern
+ * @note PostGIS function: @p relate_pattern(PG_FUNCTION_ARGS)
  */
 bool
-gserialized_relate_pattern(const GSERIALIZED *gs1, const GSERIALIZED *gs2,
+geo_relate_pattern(const GSERIALIZED *gs1, const GSERIALIZED *gs2,
   char *patt)
 {
   assert(gserialized_get_srid(gs1) == gserialized_get_srid(gs2));
@@ -929,12 +929,12 @@ gserialized_relate_pattern(const GSERIALIZED *gs1, const GSERIALIZED *gs2,
 }
 
 /**
- * @brief Return the intersection of the 3D geometries
- * @note PostGIS function: ST_Intersection(PG_FUNCTION_ARGS)
- * @note With respect to the original function we do not use the prec argument
+ * @brief Return the intersection of two geometries
+ * @note PostGIS function: @p ST_Intersection(PG_FUNCTION_ARGS). With respect
+ * to the original function we do not use the @p prec argument.
  */
 GSERIALIZED *
-gserialized_intersection(const GSERIALIZED *gs1, const GSERIALIZED *gs2)
+geometry_intersection(const GSERIALIZED *gs1, const GSERIALIZED *gs2)
 {
   GSERIALIZED *result;
   LWGEOM *geom1, *geom2, *lwresult;
@@ -950,15 +950,14 @@ gserialized_intersection(const GSERIALIZED *gs1, const GSERIALIZED *gs2)
 }
 
 /**
- * @brief This is the final function for GeomUnion aggregate.
- * Will have as input an array of Geometries.
- * Will iteratively call GEOSUnion on the GEOS-converted versions of them
- * and return PGIS-converted version back.
- * Changing combination order *might* speed up performance.
- * @note PostGIS function: pgis_union_geometry_array(PG_FUNCTION_ARGS)
+ * @brief Return the union of an array of geometries
+ * @details The funciton will iteratively call @p GEOSUnion on the
+ * GEOS-converted versions of them and return PGIS-converted version back.
+ * Changing the combination order *might* speed up performance.
+ * @note PostGIS function: @p pgis_union_geometry_array(PG_FUNCTION_ARGS)
  */
 GSERIALIZED *
-gserialized_array_union(GSERIALIZED **gsarr, int nelems)
+geometry_array_union(GSERIALIZED **gsarr, int nelems)
 {
   assert(nelems > 0);
 
@@ -1066,15 +1065,15 @@ gserialized_array_union(GSERIALIZED **gsarr, int nelems)
 
 /**
  * @brief Return the convex hull of the geometry
- * @note PostGIS function: ST_ConvexHull(PG_FUNCTION_ARGS)
- * @note With respect to the original function we do not use the prec argument
+ * @note PostGIS function: @p ST_ConvexHull(PG_FUNCTION_ARGS). With respect to
+ * the original function we do not use the @p prec argument.
  */
 GSERIALIZED *
-gserialized_convex_hull(const GSERIALIZED *gs)
+geometry_convex_hull(const GSERIALIZED *gs)
 {
   /* Empty.ConvexHull() == Empty */
   if ( gserialized_is_empty(gs) )
-    return gserialized_copy(gs);
+    return geo_copy(gs);
 
   int32_t srid = gserialized_get_srid(gs);
 
@@ -1157,18 +1156,19 @@ lwgeom_isfinite(const LWGEOM *lwgeom)
 }
 
 /**
- * @brief Return a POLYGON or MULTIPOLYGON that represents all points whose
- * distance from a geometry/geography is less than or equal to a given distance
-  * @param[in] gs Geometry
+ * @brief Return a @p POLYGON or a @p MULTIPOLYGON that represents all points 
+ * whose distance from a geometry/geography is less than or equal to a given
+ * distance
+ * @param[in] gs Geometry
  * @param[in] size Distance
  * @param[in] params Buffer style parameters
- * @note PostGIS function: ST_Buffer(PG_FUNCTION_ARGS)
+ * @note PostGIS function: @p ST_Buffer(PG_FUNCTION_ARGS)
  */
 GSERIALIZED *
-gserialized_buffer(const GSERIALIZED *gs, double size, char *params)
+geometry_buffer(const GSERIALIZED *gs, double size, char *params)
 {
   assert(gs); assert(params);
-  
+
   GEOSBufferParams *bufferparams;
   GEOSGeometry *g1, *g3 = NULL;
   GSERIALIZED *result;
@@ -1365,11 +1365,11 @@ gserialized_buffer(const GSERIALIZED *gs, double size, char *params)
 
 /**
  * @brief Return double length in meters
- * @return On error return DBL_MAX
- * @note PostGIS function: geography_length(PG_FUNCTION_ARGS)
+ * @return On error return @p DBL_MAX
+ * @note PostGIS function: @p geography_length(PG_FUNCTION_ARGS)
  */
 double
-gserialized_geog_length(GSERIALIZED *gs, bool use_spheroid)
+pgis_geography_length(GSERIALIZED *gs, bool use_spheroid)
 {
   /* EMPTY things have no length */
   int32 geo_type = gserialized_get_type(gs);
@@ -1409,12 +1409,12 @@ gserialized_geog_length(GSERIALIZED *gs, bool use_spheroid)
 }
 
 /**
- * @brief Return true if the geographies are within a distance
- * @note PostGIS function: geography_dwithin_uncached(PG_FUNCTION_ARGS)
+ * @brief Return true if two geographies are within a distance
+ * @note PostGIS function: @p geography_dwithin_uncached(PG_FUNCTION_ARGS)
  * where we use the WGS84 spheroid
  */
 bool
-gserialized_geog_dwithin(GSERIALIZED *gs1, GSERIALIZED *gs2, double tolerance,
+pgis_geography_dwithin(GSERIALIZED *gs1, GSERIALIZED *gs2, double tolerance,
   bool use_spheroid)
 {
   assert(gserialized_get_srid(gs1) == gserialized_get_srid(gs2));
@@ -1458,13 +1458,13 @@ gserialized_geog_dwithin(GSERIALIZED *gs1, GSERIALIZED *gs2, double tolerance,
 
 /**
  * @brief Return the distance between two geographies
- * @note PostGIS function: geography_distance_uncached(PG_FUNCTION_ARGS)
- * @note We set by defaultboth tolerance and use_spheroid and initialize the
+ * @note PostGIS function: @p geography_distance_uncached(PG_FUNCTION_ARGS).
+ * We set by default both @p tolerance and @p use_spheroid and initialize the
  * spheroid to WGS84
- * @note Errors return -1 to replace return NULL
+ * @note Errors return -1 to replace return @p NULL
  */
 double
-gserialized_geog_distance(const GSERIALIZED *gs1, const GSERIALIZED *gs2)
+pgis_geography_distance(const GSERIALIZED *gs1, const GSERIALIZED *gs2)
 {
   assert(gserialized_get_srid(gs1) == gserialized_get_srid(gs1));
 
@@ -1503,7 +1503,7 @@ gserialized_geog_distance(const GSERIALIZED *gs1, const GSERIALIZED *gs2)
   if ( distance < 0.0 )
   {
     meos_error(ERROR, MEOS_ERR_INTERNAL_TYPE_ERROR,
-      "gserialized_geog_distance returned distance < 0.0");
+      "geography_distance returned distance < 0.0");
     return -1;
   }
 
@@ -1620,28 +1620,30 @@ postgis_valid_typmod(GSERIALIZED *gs, int32_t typmod)
 }
 
 /**
- * @ingroup libmeos_pgis_types
- * @brief Input function for geometries
- *
- * Format is '[SRID=#;]wkt|wkb'
- *  LWGEOM_in( 'SRID=99;POINT(0 0)')
- *  LWGEOM_in( 'POINT(0 0)')            --> assumes SRID=SRID_UNKNOWN
- *  LWGEOM_in( 'SRID=99;0101000000000000000000F03F000000000000004')
- *  LWGEOM_in( '0101000000000000000000F03F000000000000004')
- *  LWGEOM_in( '{"type":"Point","coordinates":[1,1]}')
- *  returns a GSERIALIZED object
- * @param[in] input String
- * @param[in] geom_typmod Typmod
- * @note PostGIS function: LWGEOM_in(PG_FUNCTION_ARGS)
+ * @ingroup meos_pgis_types
+ * @brief Return a geometry from its Well-Known Text (WKT), Well-Known Binary
+ * (WKB) or GeoJSON representation
+ * @details The format is @p '[SRID=#;]wkt|wkb'. Examples of input are as
+ * follows:
+ * @code
+ * 'SRID=99;POINT(0 0)'
+ * 'POINT(0 0)' --> assumes SRID=SRID_UNKNOWN
+ * 'SRID=99;0101000000000000000000F03F000000000000004'
+ * '0101000000000000000000F03F000000000000004'
+ * '{"type":"Point","coordinates":[1,1]}'
+ * @endcode
+ * @param[in] str String
+ * @param[in] typmod Typmod
+ * @note PostGIS function: @p LWGEOM_in(PG_FUNCTION_ARGS)
  */
 GSERIALIZED *
-pgis_geometry_in(char *input, int32 geom_typmod)
+pgis_geometry_in(char *str, int32 typmod)
 {
   /* Ensure validity of the arguments */
-  if (! ensure_not_null((void *) input))
+  if (! ensure_not_null((void *) str))
     return NULL;
 
-  char *str = input;
+  char *str1 = str;
   LWGEOM_PARSER_RESULT lwg_parser_result;
   LWGEOM *lwgeom;
   GSERIALIZED *result;
@@ -1650,16 +1652,16 @@ pgis_geometry_in(char *input, int32 geom_typmod)
   lwgeom_parser_result_init(&lwg_parser_result);
 
   /* Empty string. */
-  if ( str[0] == '\0' ) {
+  if ( str1[0] == '\0' ) {
     meos_error(ERROR, MEOS_ERR_TEXT_INPUT, "parse error - invalid geometry");
     return NULL;
   }
 
   /* Starts with "SRID=" */
-  if (pg_strncasecmp(str,"SRID=",5) == 0)
+  if (pg_strncasecmp(str1, "SRID=", 5) == 0)
   {
     /* Roll forward to semi-colon */
-    char *tmp = str;
+    char *tmp = str1;
     while (tmp && *tmp != ';')
       tmp++;
 
@@ -1668,20 +1670,20 @@ pgis_geometry_in(char *input, int32 geom_typmod)
     {
       /* Null terminate the SRID= string */
       *tmp = '\0';
-      /* Set str to the start of the real WKB */
-      str = tmp + 1;
+      /* Set str1 to the start of the real WKB */
+      str1 = tmp + 1;
       /* Move tmp to the start of the numeric part */
-      tmp = input + 5;
+      tmp = str + 5;
       /* Parse out the SRID number */
       srid = atoi(tmp);
     }
   }
 
   /* WKB? Let's find out. */
-  if ( str[0] == '0' )
+  if (str1[0] == '0')
   {
-    size_t hexsize = strlen(str);
-    unsigned char *wkb = bytes_from_hexbytes(str, hexsize);
+    size_t hexsize = strlen(str1);
+    unsigned char *wkb = bytes_from_hexbytes(str1, hexsize);
     /* TODO: 20101206: No parser checks! This is inline with current 1.5 behavior, but needs discussion */
     lwgeom = lwgeom_from_wkb(wkb, hexsize/2, LW_PARSER_CHECK_NONE);
     /* If we picked up an SRID at the head of the WKB set it manually */
@@ -1692,10 +1694,10 @@ pgis_geometry_in(char *input, int32 geom_typmod)
     result = geo_serialize(lwgeom);
     lwgeom_free(lwgeom);
   }
-  else if (str[0] == '{')
+  else if (str1[0] == '{')
   {
     char *srs = NULL;
-    lwgeom = lwgeom_from_geojson(str, &srs);
+    lwgeom = lwgeom_from_geojson(str1, &srs);
     if (srs)
     {
       srid = SRID_DEFAULT; // TODO
@@ -1709,7 +1711,7 @@ pgis_geometry_in(char *input, int32 geom_typmod)
   /* WKT then. */
   else
   {
-    if ( lwgeom_parse_wkt(&lwg_parser_result, str, LW_PARSER_CHECK_ALL) == LW_FAILURE )
+    if ( lwgeom_parse_wkt(&lwg_parser_result, str1, LW_PARSER_CHECK_ALL) == LW_FAILURE )
     {
       PG_PARSER_ERROR(lwg_parser_result);
       return NULL;
@@ -1721,10 +1723,8 @@ pgis_geometry_in(char *input, int32 geom_typmod)
     lwgeom_parser_result_free(&lwg_parser_result);
   }
 
-  if ( geom_typmod >= 0 )
-  {
-    result = postgis_valid_typmod(result, geom_typmod);
-  }
+  if (typmod >= 0)
+    result = postgis_valid_typmod(result, typmod);
 
   /* Don't free the parser result (and hence lwgeom) until we have done */
   /* the typemod check with lwgeom */
@@ -1732,19 +1732,18 @@ pgis_geometry_in(char *input, int32 geom_typmod)
 }
 
 /**
- * @ingroup libmeos_pgis_types
- * @brief Output function for geometries
- *
- * LWGEOM_out(lwgeom) --> cstring
- * output is 'SRID=#;{wkb in hex form}'
- * ie. 'SRID=-99;0101000000000000000000F03F0000000000000040'
- * WKB is machine endian
- * if SRID=-1, the 'SRID=-1;' will probably not be present.
+ * @ingroup meos_pgis_types
+ * @brief Return the hex-encoded ASCII Well-Known Binary (HexWKB)
+ * representation of a geometry/geography
+ * @details The output is `'SRID=#;{wkb in hex form}'`,
+ * e.g., @p 'SRID=-99;0101000000000000000000F03F0000000000000040'.
+ * The WKB otput is in the machine endian.
+ * If SRID=-1, the @p 'SRID=-1;' will probably not be present.
  * @param[in] gs Geometry/geography
- * @note PostGIS function: LWGEOM_out(PG_FUNCTION_ARGS)
+ * @note PostGIS function: @p LWGEOM_out(PG_FUNCTION_ARGS)
  */
 char *
-gserialized_out(const GSERIALIZED *gs)
+geo_out(const GSERIALIZED *gs)
 {
   /* Ensure validity of the arguments */
   if (! ensure_not_null((void *) gs))
@@ -1765,7 +1764,7 @@ gserialized_out(const GSERIALIZED *gs)
  * @param[in] geography True if it is a geometry
  */
 static GSERIALIZED *
-gserialized_from_text(char *wkt, int srid, bool geography)
+geo_from_text(char *wkt, int srid, bool geography)
 {
   /* Ensure validity of the arguments */
   if (! ensure_not_null((void *) wkt))
@@ -1792,7 +1791,7 @@ gserialized_from_text(char *wkt, int srid, bool geography)
     lwgeom_set_srid(lwgeom, srid);
 
   geo_result = geography ?
-    gserialized_geography_from_lwgeom(lwgeom, -1) : geo_serialize(lwgeom);
+    geography_from_lwgeom(lwgeom, -1) : geo_serialize(lwgeom);
   /* Clean up */
   lwgeom_free(lwg_parser_result.geom);
   lwgeom_parser_result_free(&lwg_parser_result);
@@ -1802,46 +1801,47 @@ gserialized_from_text(char *wkt, int srid, bool geography)
 }
 
 /**
- * @ingroup libmeos_pgis_types
- * @brief Return a geometry from its WKT representation (and optionally a SRID)
+ * @ingroup meos_pgis_types
+ * @brief Return a geometry from its Well-Known Text (WKT) representation
  * @param[in] wkt WKT string
  * @param[in] srid SRID
  * @note This is a a stricter version of #pgis_geometry_in, where we refuse to
  * accept (HEX)WKB or EWKT.
- * @note PostGIS function: LWGEOM_from_text(PG_FUNCTION_ARGS)
+ * @note PostGIS function: @p LWGEOM_from_text(PG_FUNCTION_ARGS)
  */
 GSERIALIZED *
 geometry_from_text(char *wkt, int srid)
 {
-  return gserialized_from_text(wkt, srid, false);
+  return geo_from_text(wkt, srid, false);
 }
 
 /**
- * @ingroup libmeos_pgis_types
- * @brief Return a geometry from its WKT representation (and optionally a SRID)
+ * @ingroup meos_pgis_types
+ * @brief Return a geography from its Well-Known Text (WKT) representation
  * @note This is a a stricter version of #pgis_geography_in, where we refuse to
  * accept (HEX)WKB or EWKT.
  * @param[in] wkt WKT string
  * @param[in] srid SRID
- * @note PostGIS function: geography_from_text(PG_FUNCTION_ARGS)
+ * @note PostGIS function: @p geography_from_text(PG_FUNCTION_ARGS)
  */
 GSERIALIZED *
 geography_from_text(char *wkt, int srid)
 {
-  return gserialized_from_text(wkt, srid, true);
+  return geo_from_text(wkt, srid, true);
 }
 
 /**
- * @ingroup libmeos_pgis_types
- * @brief Return the WKT representation (and optionally a SRID) of a geometry
+ * @ingroup meos_pgis_types
+ * @brief Return the Well-Known Text (WKT) representation of a
+ * geometry/geography
  * @param[in] gs Geometry/geography
  * @param[in] precision Maximum number of decimal digits
  * @note This is a a stricter version of #pgis_geometry_in, where we refuse to
  * accept (HEX)WKB or EWKT.
- * @note PostGIS function: LWGEOM_asText(PG_FUNCTION_ARGS)
+ * @note PostGIS function: @p LWGEOM_asText(PG_FUNCTION_ARGS)
  */
 char *
-gserialized_as_text(const GSERIALIZED *gs, int precision)
+geo_as_text(const GSERIALIZED *gs, int precision)
 {
   /* Ensure validity of the arguments */
   if (! ensure_not_null((void *) gs))
@@ -1852,16 +1852,17 @@ gserialized_as_text(const GSERIALIZED *gs, int precision)
 }
 
 /**
- * @ingroup libmeos_pgis_types
- * @brief Return the EWKT representation (and optionally a SRID) of a geometry
+ * @ingroup meos_pgis_types
+ * @brief Return the Extended Well-Known Text (EWKT) representation of a
+ * geometry/geography
  * @param[in] gs Geometry/geography
  * @param[in] precision Maximum number of decimal digits
  * @note This is a a stricter version of #pgis_geometry_in, where we refuse to
  * accept (HEX)WKB or EWKT.
- * @note PostGIS function: LWGEOM_asEWKT(PG_FUNCTION_ARGS)
+ * @note PostGIS function: @p LWGEOM_asEWKT(PG_FUNCTION_ARGS)
  */
 char *
-gserialized_as_ewkt(const GSERIALIZED *gs, int precision)
+geo_as_ewkt(const GSERIALIZED *gs, int precision)
 {
   /* Ensure validity of the arguments */
   if (! ensure_not_null((void *) gs))
@@ -1872,12 +1873,13 @@ gserialized_as_ewkt(const GSERIALIZED *gs, int precision)
 }
 
 /**
- * @ingroup libmeos_pgis_types
- * @brief Return a geometry from its WKT representation
+ * @ingroup meos_pgis_types
+ * @brief Return a geometry from its hex-encoded ASCII Well-Known Binary
+ * (HexEWKB) representation
  * @param[in] wkt WKT string
  * @note This is a a stricter version of #pgis_geometry_in, where we refuse to
  * accept (HEX)WKB or EWKT.
- * @note PostGIS function: LWGEOM_from_text(PG_FUNCTION_ARGS)
+ * @note PostGIS function: @p LWGEOM_from_text(PG_FUNCTION_ARGS)
  */
 GSERIALIZED *
 geometry_from_hexewkb(const char *wkt)
@@ -1886,12 +1888,13 @@ geometry_from_hexewkb(const char *wkt)
 }
 
 /**
- * @ingroup libmeos_pgis_types
- * @brief Return a geography from its WKT representation
+ * @ingroup meos_pgis_types
+ * @brief Return a geography from its hex-encoded ASCII Well-Known Binary
+ * (HexEWKB) representation
  * @param[in] wkt WKT string
  * @note This is a a stricter version of #pgis_geography_in, where we refuse to
  * accept (HEX)WKB or EWKT.
- * @note PostGIS function: LWGEOM_from_text(PG_FUNCTION_ARGS)
+ * @note PostGIS function: @p LWGEOM_from_text(PG_FUNCTION_ARGS)
  */
 GSERIALIZED *
 geography_from_hexewkb(const char *wkt)
@@ -1900,14 +1903,15 @@ geography_from_hexewkb(const char *wkt)
 }
 
 /**
- * @ingroup libmeos_pgis_types
- * @brief Return the WKB representation of a geometry in hex-encoded ASCII.
+ * @ingroup meos_pgis_types
+ * @brief Return the hex-encoded ASCII Well-Known Binary (HexWKB)
+ * representation of a geometry/geography
  * @param[in] gs Geometry/geography
- * @param[in] type Endianness
- * @note PostGIS function: AsHEXEWKB(gs, string)
+ * @param[in] endian Endianness
+ * @note PostGIS function: @p AsHEXEWKB(gs, string)
  */
 char *
-gserialized_as_hexewkb(const GSERIALIZED *gs, const char *type)
+geo_as_hexewkb(const GSERIALIZED *gs, const char *endian)
 {
   /* Ensure validity of the arguments */
   if (! ensure_not_null((void *) gs))
@@ -1915,9 +1919,9 @@ gserialized_as_hexewkb(const GSERIALIZED *gs, const char *type)
 
   uint8_t variant = 0;
   /* If user specified endianness, respect it */
-  if (type != NULL)
+  if (endian != NULL)
   {
-    if  (! strncmp(type, "xdr", 3) || ! strncmp(type, "XDR", 3))
+    if  (! strncmp(endian, "xdr", 3) || ! strncmp(endian, "XDR", 3))
       variant = variant | WKB_XDR;
     else
       variant = variant | WKB_NDR;
@@ -1931,16 +1935,17 @@ gserialized_as_hexewkb(const GSERIALIZED *gs, const char *type)
 }
 
 /**
- * @ingroup libmeos_pgis_types
- * @brief Return a geometry from its EWKB representation
+ * @ingroup meos_pgis_types
+ * @brief Return a geometry/geography from its EWKB representation
+ * @details This function parses EWKB (extended form) which also contains SRID
+ * info.
  * @param[in] bytea_wkb WKB string
  * @param[in] srid SRID
- * @note PostGIS function: LWGEOMFromEWKB(wkb, [SRID])
+ * @note PostGIS function: @p LWGEOMFromEWKB(wkb, [SRID])
  * @note wkb is in *binary* not hex form
- * @note This function parses EWKB (extended form) which also contains SRID info.
  */
 GSERIALIZED *
-gserialized_from_ewkb(const bytea *bytea_wkb, int32 srid)
+geo_from_ewkb(const bytea *bytea_wkb, int32 srid)
 {
   /* Ensure validity of the arguments */
   if (! ensure_not_null((void *) bytea_wkb))
@@ -1967,14 +1972,15 @@ gserialized_from_ewkb(const bytea *bytea_wkb, int32 srid)
 }
 
 /**
- * @ingroup libmeos_pgis_types
- * @brief Return the EWKB representation of a geometry
+ * @ingroup meos_pgis_types
+ * @brief Return the Extended Well-Known Binary (EWKB) representation of a
+ * geometry/geography
  * @param[in] gs Geometry/geography
- * @param[in] type Endianness
- * @note PostGIS function: WKBFromLWGEOM(lwgeom) --> wkb
+ * @param[in] endian Endianness
+ * @note PostGIS function: @p WKBFromLWGEOM(PG_FUNCTION_ARGS)
  */
 bytea *
-gserialized_as_ewkb(const GSERIALIZED *gs, char *type)
+geo_as_ewkb(const GSERIALIZED *gs, char *endian)
 {
   /* Ensure validity of the arguments */
   if (! ensure_not_null((void *) gs))
@@ -1983,9 +1989,9 @@ gserialized_as_ewkb(const GSERIALIZED *gs, char *type)
   uint8_t variant = 0;
 
   /* If user specified endianness, respect it */
-  if (type)
+  if (endian)
   {
-    if (! strncmp(type, "xdr", 3) || ! strncmp(type, "XDR", 3))
+    if (! strncmp(endian, "xdr", 3) || ! strncmp(endian, "XDR", 3))
       variant = variant | WKB_XDR;
     else
       variant = variant | WKB_NDR;
@@ -2001,13 +2007,13 @@ gserialized_as_ewkb(const GSERIALIZED *gs, char *type)
 }
 
 /**
- * @ingroup libmeos_pgis_types
- * @brief Input a geometry from GeoJSON format
+ * @ingroup meos_pgis_types
+ * @brief Return the GeoJSON representation of a geometry
  * @param[in] geojson GeoJSON string
- * @note PostGIS function: geom_from_geojson(PG_FUNCTION_ARGS)
+ * @note PostGIS function: @p geom_from_geojson(PG_FUNCTION_ARGS)
  */
 GSERIALIZED *
-gserialized_from_geojson(const char *geojson)
+geo_from_geojson(const char *geojson)
 {
   /* Ensure validity of the arguments */
   if (! ensure_not_null((void *) geojson))
@@ -2039,17 +2045,16 @@ gserialized_from_geojson(const char *geojson)
 }
 
 /**
- * @ingroup libmeos_pgis_types
- * @brief Output a geometry in GeoJSON format
- * @param[in] gs Geometry/geography
+ * @ingroup meos_pgis_types
+ * @brief Return the GeoJSON representation of a geometry
+ * @param[in] gs Geometry
  * @param[in] option Option
  * @param[in] precision Maximum number of decimal digits
  * @param[in] srs Spatial reference system
- * @note PostGIS function: LWGEOM_asGeoJson(PG_FUNCTION_ARGS)
+ * @note PostGIS function: @p LWGEOM_asGeoJson(PG_FUNCTION_ARGS)
  */
 char *
-gserialized_as_geojson(const GSERIALIZED *gs, int option, int precision,
-  char *srs)
+geo_as_geojson(const GSERIALIZED *gs, int option, int precision, char *srs)
 {
   /* Ensure validity of the arguments */
   if (! ensure_not_null((void *) gs))
@@ -2101,14 +2106,12 @@ gserialized_as_geojson(const GSERIALIZED *gs, int option, int precision,
 #endif /* MEOS */
 
 /**
- * @ingroup libmeos_pgis_types
- * @brief Return true if the geometries are the same
+ * @ingroup meos_pgis_types
+ * @brief Return true if the geometries/geographies are the same
  * @param[in] gs1,gs2 Geometries/geographies
- * @note The `pgis_` prefix is needed since there is a PostGIS function
- * `gserialized_same` in file `gserialized_gist_nd.c`
  */
 bool
-pgis_gserialized_same(const GSERIALIZED *gs1, const GSERIALIZED *gs2)
+geo_same(const GSERIALIZED *gs1, const GSERIALIZED *gs2)
 {
   /* Ensure validity of the arguments */
   if (! ensure_not_null((void *) gs1) || ! ensure_not_null((void *) gs2))
@@ -2126,10 +2129,11 @@ pgis_gserialized_same(const GSERIALIZED *gs1, const GSERIALIZED *gs2)
  *****************************************************************************/
 
 /**
-* The geography type only support POINT, LINESTRING, POLYGON, MULTI* variants
-* of same, and GEOMETRYCOLLECTION. If the input type is not one of those, shut
-* down the query.
-*/
+ * @brief Ensure that the geography type is valid
+ * The geography type only support POINT, LINESTRING, POLYGON, MULTI* variants
+ * of same, and GEOMETRYCOLLECTION. If the input type is not one of those, shut
+ * down the query.
+ */
 void
 geography_valid_type(uint8_t type)
 {
@@ -2142,7 +2146,7 @@ geography_valid_type(uint8_t type)
 }
 
 GSERIALIZED *
-gserialized_geography_from_lwgeom(LWGEOM *lwgeom, int32 geog_typmod)
+geography_from_lwgeom(LWGEOM *lwgeom, int32 geog_typmod)
 {
   GSERIALIZED *g_ser = NULL;
 
@@ -2178,11 +2182,12 @@ gserialized_geography_from_lwgeom(LWGEOM *lwgeom, int32 geog_typmod)
 }
 
 /**
- * @ingroup libmeos_pgis_types
- * @brief Get a geography from in string
+ * @ingroup meos_pgis_types
+ * @brief Return a geography from its Well-Known Text or Binary (WKT or Binary)
+ * representation
  * @param[in] str String
  * @param[in] geog_typmod Typmod
- * @note PostGIS function: geography_in(PG_FUNCTION_ARGS)
+ * @note PostGIS function: @p geography_in(PG_FUNCTION_ARGS)
  */
 GSERIALIZED *
 pgis_geography_in(char *str, int32 geog_typmod)
@@ -2232,7 +2237,7 @@ pgis_geography_in(char *str, int32 geog_typmod)
 #endif /* ! MEOS */
 
   /* Convert to gserialized */
-  g_ser = gserialized_geography_from_lwgeom(lwgeom, geog_typmod);
+  g_ser = geography_from_lwgeom(lwgeom, geog_typmod);
 
   /* Clean up temporary object */
   lwgeom_free(lwgeom);
@@ -2264,7 +2269,7 @@ pgis_geography_from_binary(const char *wkb_bytea)
   /* Error on any SRID != default */
   // srid_check_latlong(lwgeom->srid);
 
-  GSERIALIZED *result = gserialized_geography_from_lwgeom(geom, -1);
+  GSERIALIZED *result = geography_from_lwgeom(geom, -1);
   lwgeom_free(geom);
   return result;
 }
@@ -2275,7 +2280,7 @@ pgis_geography_from_binary(const char *wkb_bytea)
 #if 0 /* not used  */
 /**
  * @brief Get a geography from a geometry
- * @note PostGIS function: geography_from_geometry(PG_FUNCTION_ARGS)
+ * @note PostGIS function: @p geography_from_geometry(PG_FUNCTION_ARGS)
  */
 GSERIALIZED *
 gserialized_geog_from_geom(GSERIALIZED *geom)
@@ -2314,7 +2319,7 @@ gserialized_geog_from_geom(GSERIALIZED *geom)
 
 /**
  * @brief Get a geometry from a geography
- * @note PostGIS function: geometry_from_geography(PG_FUNCTION_ARGS)
+ * @note PostGIS function: @p geometry_from_geography(PG_FUNCTION_ARGS)
  */
 GSERIALIZED *
 gserialized_geom_from_geog(GSERIALIZED *geom)
@@ -2340,8 +2345,9 @@ gserialized_geom_from_geog(GSERIALIZED *geom)
 
 /**
  * @brief Get a geometry from a geography
- * @note PostGIS function: LWGEOM_line_interpolate_point(PG_FUNCTION_ARGS)
- * @pre fraction >= 0 && fraction <= 1 && lwgeom->type == LINETYPE
+ * @pre The argument @p fraction is in [0,1] and the type of the geometry is 
+ * @p LINETYPE
+ * @note PostGIS function: @p LWGEOM_line_interpolate_point(PG_FUNCTION_ARGS)
  */
 LWGEOM *
 lwgeom_line_interpolate_point(LWGEOM *lwgeom, double fraction, int32_t srid,
@@ -2361,10 +2367,10 @@ lwgeom_line_interpolate_point(LWGEOM *lwgeom, double fraction, int32_t srid,
 
 /**
  * @brief Interpolate a point from a line
- * @note PostGIS function: LWGEOM_line_interpolate_point(PG_FUNCTION_ARGS)
+ * @note PostGIS function: @p LWGEOM_line_interpolate_point(PG_FUNCTION_ARGS)
  */
 GSERIALIZED *
-gserialized_line_interpolate_point(GSERIALIZED *gs, double distance_fraction,
+linestring_line_interpolate_point(GSERIALIZED *gs, double distance_fraction,
   char repeat)
 {
   GSERIALIZED *result;
@@ -2405,10 +2411,10 @@ gserialized_line_interpolate_point(GSERIALIZED *gs, double distance_fraction,
 
 /**
  * @brief Get a subline from a line
- * @note PostGIS function: LWGEOM_line_substring(PG_FUNCTION_ARGS)
+ * @note PostGIS function: @p LWGEOM_line_substring(PG_FUNCTION_ARGS)
  */
 GSERIALIZED *
-gserialized_line_substring(GSERIALIZED *geom, double from, double to)
+linestring_substring(GSERIALIZED *geom, double from, double to)
 {
   LWGEOM *olwgeom;
   POINTARRAY *opa;
@@ -2557,7 +2563,7 @@ gserialized_line_substring(GSERIALIZED *geom, double from, double to)
  * @return On error return -1.0
  */
 double
-gserialized_line_locate_point(GSERIALIZED *gs1, GSERIALIZED *gs2)
+linestring_locate_point(GSERIALIZED *gs1, GSERIALIZED *gs2)
 {
   LWLINE *lwline;
   LWPOINT *lwpoint;
@@ -2597,23 +2603,23 @@ gserialized_line_locate_point(GSERIALIZED *gs1, GSERIALIZED *gs2)
 
 /**
  * PointN(GEOMETRY,INTEGER) -- find the first linestring in GEOMETRY,
- * @return the point at index INTEGER (1 is 1st point).  Return NULL if
+ * @return the point at index INTEGER (1 is 1st point).  Return @p NULL if
  * there is no LINESTRING(..) in GEOMETRY or INTEGER is out of bounds.
  */
 GSERIALIZED *
-gserialized_pointn_linestring(const GSERIALIZED *gs, int where)
+linestring_point_n(const GSERIALIZED *gs, int where)
 {
   LWGEOM *geom = lwgeom_from_gserialized(gs);
   LWPOINT *point = NULL;
   int type = geom->type;
 
   /* If index is negative, count backward */
-  if( where < 1 )
+  if (where < 1)
   {
     int count = -1;
     if ( type == LINETYPE || type == CIRCSTRINGTYPE || type == COMPOUNDTYPE )
       count = lwgeom_count_vertices(geom);
-    if(count >0)
+    if (count >0)
     {
       /* only work if we found the total point number */
       /* converting where to positive backward indexing, +1 because 1 indexing */
@@ -2647,7 +2653,7 @@ gserialized_pointn_linestring(const GSERIALIZED *gs, int where)
  * @return On error return -1.0
 */
 int
-gserialized_numpoints_linestring(const GSERIALIZED *gs)
+linestring_numpoints(const GSERIALIZED *gs)
 {
   LWGEOM *geom = lwgeom_from_gserialized(gs);
   int count = -1;
