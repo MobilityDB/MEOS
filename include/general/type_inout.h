@@ -32,8 +32,8 @@
  * values and two Boolean values stating whether the bounds are inclusive.
  */
 
-#ifndef __TYPE_OUT_H__
-#define __TYPE_OUT_H__
+#ifndef __TYPE_INOUT_H__
+#define __TYPE_INOUT_H__
 
 /* PostgreSQL */
 #include <postgres.h>
@@ -71,6 +71,9 @@ extern uint8_t *datum_as_wkb(Datum value, meosType type, uint8_t variant,
 extern char *datum_as_hexwkb(Datum value, meosType type, uint8_t variant,
   size_t *size);
 
+extern Datum type_from_wkb(const uint8_t *wkb, size_t size, meosType type);
+extern Datum type_from_hexwkb(const char *hexwkb, size_t size, meosType type);
+
 /*****************************************************************************/
 
-#endif /* __TYPE_OUT_H__ */
+#endif /* __TYPE_INOUT_H__ */
