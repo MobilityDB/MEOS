@@ -1,12 +1,12 @@
 /*****************************************************************************
  *
  * This MobilityDB code is provided under The PostgreSQL License.
- * Copyright (c) 2016-2024, Université libre de Bruxelles and MobilityDB
+ * Copyright (c) 2016-2025, Université libre de Bruxelles and MobilityDB
  * contributors
  *
  * MobilityDB includes portions of PostGIS version 3 source code released
  * under the GNU General Public License (GPLv2 or later).
- * Copyright (c) 2001-2024, PostGIS contributors
+ * Copyright (c) 2001-2025, PostGIS contributors
  *
  * Permission to use, copy, modify, and distribute this software and its
  * documentation for any purpose, without fee, and without a written
@@ -33,8 +33,8 @@
  * PostGIS functions in order to bypass the function manager @p fmgr.c.
  */
 
-#ifndef __PGIS_TYPES_H__
-#define __PGIS_TYPES_H__
+#ifndef __POSTGIS_FUNCS_H__
+#define __POSTGIS_FUNCS_H__
 
 /*****************************************************************************/
 
@@ -52,6 +52,12 @@
 
 extern GSERIALIZED* geom_serialize(LWGEOM *lwgeom);
 extern GSERIALIZED* geog_serialize(LWGEOM *lwgeom);
+
+/* Functions adapted from gserialized_typmod.c */
+
+extern GSERIALIZED *postgis_valid_typmod(GSERIALIZED *gs, int32_t typmod);
+
+extern char *geo_as_wkt(const GSERIALIZED *gs, int precision, bool extended);
 
 /* Functions adapted from lwgeom_box.c */
 
@@ -78,4 +84,4 @@ extern const char *geo_typename(int type);
 
 /*****************************************************************************/
 
-#endif /* __PGIS_TYPES_H__ */
+#endif /* __POSTGIS_FUNCS_H__ */
