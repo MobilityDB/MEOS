@@ -28,42 +28,28 @@
  *****************************************************************************/
 
 /**
- * @brief Temporal distance for temporal circular buffers.
+ * @brief Restriction functions for temporal points.
  */
 
-#ifndef __TPOSE_DISTANCE_H__
-#define __TPOSE_DISTANCE_H__
+#ifndef __TPOINT_RESTRICT_H__
+#define __TPOINT_RESTRICT_H__
 
 /* PostgreSQL */
 #include <postgres.h>
+/* PostGIS */
+#include <liblwgeom.h>
 /* MEOS */
-#include "temporal/temporal.h"
-#include "pose/tpose.h"
+#include <meos.h>
 
 /*****************************************************************************/
 
-extern Temporal *distance_tpose_point(const Temporal *temp,
-  const GSERIALIZED *gs);
-extern Temporal *distance_tpose_pose(const Temporal *temp, const Pose *pose);
-extern Temporal *distance_tpose_tpose(const Temporal *temp1,
-  const Temporal *temp2);
+/* Restriction functions */
 
-extern TInstant *nai_tpose_geo(const Temporal *temp, const GSERIALIZED *gs);
-extern TInstant *nai_tpose_pose(const Temporal *temp, const Pose *pose);
-extern TInstant *nai_tpose_tpose(const Temporal *temp, const Temporal *temp2);
-
-extern double nad_tpose_geo(const Temporal *temp, const GSERIALIZED *gs);
-extern double nad_tpose_pose(const Temporal *temp, const Pose *pose);
-extern double nad_tpose_tpose(const Temporal *temp1,
-  const Temporal *temp2);
-
-extern GSERIALIZED *shortestline_tpose_geo(const Temporal *temp,
-  const GSERIALIZED *geo);
-extern GSERIALIZED *shortestline_tpose_pose(const Temporal *temp,
-  const Pose *pose);
-extern GSERIALIZED *shortestline_tpose_tpose(const Temporal *temp1,
-  const Temporal *temp2);
+extern TSequence **tpointseq_at_geom(const TSequence *seq,
+  const GSERIALIZED *gs, int *count);
+extern Span *tpointseq_interperiods(const TSequence *seq,
+  const GSERIALIZED *gs, int *count);
 
 /*****************************************************************************/
 
-#endif /* __TPOSE_DISTANCE_H__ */
+#endif /* __TPOINT_RESTRICT_H__ */

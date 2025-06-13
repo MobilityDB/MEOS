@@ -28,23 +28,47 @@
  *****************************************************************************/
 
 /**
- * @brief Spatial functions for PostGIS geography.
+ * @brief Temporal distance for temporal network points.
  */
 
-#ifndef __GEOGRAPHY_FUNCTIONS_H__
-#define __GEOGRAPHY_FUNCTIONS_H__
+#ifndef __TCBUFFER_H__
+#define __TCBUFFER_H__
 
 /* PostgreSQL */
 #include <postgres.h>
-/* PostGIS */
-#include <liblwgeom.h>
-
-
-/*****************************************************************************/
-
-extern GSERIALIZED *geography_shortestline_internal(const GSERIALIZED *g1,
-  const GSERIALIZED *g2, bool use_spheroid);
+/* MEOS */
+#include "temporal/temporal.h"
+#include "cbuffer/cbuffer.h"
 
 /*****************************************************************************/
 
-#endif
+/* Validity functions */
+
+extern bool ensure_valid_tcbuffer_cbuffer(const Temporal *temp,
+  const Cbuffer *cb);
+extern bool ensure_valid_tcbuffer_geo(const Temporal *temp,
+  const GSERIALIZED *gs);
+extern bool ensure_valid_tcbuffer_stbox(const Temporal *temp,
+  const STBox *box);
+extern bool ensure_valid_tcbuffer_tcbuffer(const Temporal *temp1,
+  const Temporal *temp2);
+
+/* Interpolation functions */
+
+extern int tcbuffersegm_intersection_value(Datum start, Datum end,
+  Datum value, TimestampTz lower, TimestampTz upper, TimestampTz *t1,
+  TimestampTz *t2);
+extern int tcbuffersegm_intersection(Datum start1, Datum end1, Datum start2,
+  Datum end2, TimestampTz lower, TimestampTz upper, TimestampTz *t1,
+  TimestampTz *t2);
+
+extern int tcbuffersegm_dwithin_turnpt(Datum start1, Datum end1, Datum start2,
+  Datum end2, Datum dist, TimestampTz lower, TimestampTz upper,
+  TimestampTz *t1, TimestampTz *t2);
+extern int tcbuffersegm_distance_turnpt(Datum start1, Datum end1, Datum start2,
+  Datum end2, Datum dist UNUSED, TimestampTz lower, TimestampTz upper,
+  TimestampTz *t1, TimestampTz *t2);
+
+/*****************************************************************************/
+
+#endif /* __TCBUFFER_H__ */

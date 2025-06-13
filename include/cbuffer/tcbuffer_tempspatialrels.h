@@ -28,23 +28,27 @@
  *****************************************************************************/
 
 /**
- * @brief Output of temporal points in WKT, EWKT and MF-JSON format
+ * @brief Spatiotemporal relationships for temporal points.
  */
 
-#ifndef __TGEO_OUT_H__
-#define __TGEO_OUT_H__
+#ifndef __TCBUFFER_TEMPSPATIALRELS_H__
+#define __TCBUFFER_TEMPSPATIALRELS_H__
 
 /* PostgreSQL */
 #include <postgres.h>
 /* MEOS */
-#include <meos.h>
-#include "temporal/meos_catalog.h"
+#include "temporal/temporal.h"
+#include "cbuffer/cbuffer.h"
 
 /*****************************************************************************/
 
-extern uint8_t *coords_to_wkb_buf(const TInstant *inst, uint8_t *buf,
-  uint8_t variant);
+extern Temporal *tinterrel_tcbuffer_cbuffer(const Temporal *temp,
+  const Cbuffer *cb, bool tinter, bool restr, bool atvalue);
+extern Temporal *tinterrel_tcbuffer_geo(const Temporal *temp,
+  const GSERIALIZED *gs, bool tinter, bool restr, bool atvalue);
+// extern Temporal *tinterrel_tcbuffer_tcbuffer(const Temporal *temp1,
+//   const Temporal *temp2, bool tinter, bool restr, bool atvalue);
 
 /*****************************************************************************/
 
-#endif /* __TGEO_OUT_H__ */
+#endif /* __TCBUFFER_TEMPSPATIALRELS_H__ */
