@@ -1,5 +1,11 @@
-MEOS
-====
+MEOS — ARCHIVED SNAPSHOT
+========================
+
+> **⚠️ This repository is a snapshot of MEOS taken in April 2026 and is not maintained.**
+>
+> **MEOS is developed in [MobilityDB/MobilityDB](https://github.com/MobilityDB/MobilityDB/tree/master/meos), under `meos/`.** Its documentation is at [libmeos.org](https://libmeos.org).
+>
+> The code below predates six months of MEOS development; do not build from it.
 
 **Mobility Engine, Open Source**
 
